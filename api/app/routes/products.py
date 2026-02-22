@@ -1,0 +1,117 @@
+from __future__ import annotations
+
+import json
+from typing import Optional
+from uuid import UUID
+
+from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import ValidationError
+
+from app.core.config import get_settings
+from app.db.session import get_async_session
+from app.schemas.products import ProductDetailSchema, ProductListResponse
+from app.schemas.queries import ProductQueryParams
+from app.services.cache import cached_json
+from app.services.search import fetch_product_detail, fetch_products
+
+router = APIRouter(prefix="/products", tags=["products"])
+settings = get_settings()
+
+
+def _split_csv_params(values: Optional[list[str]]) -> list[str]:
+    if not values:
+        return []
+    items: list[str] = []
+    for value in values:
+        for part in value.split(","):
+            candidate = part.strip()
+            if candidate:
+                items.append(candidate)
+    return items
+
+
+async def _params(
+    q: Optional[str] = Query(None),
+    chain: Optional[list[str]] = Query(None),
+    store: Optional[list[str]] = Query(None),
+    category: Optional[list[str]] = Query(None),
+    price_min: Optional[float] = Query(None),
+    price_max: Optional[float] = Query(None),
+    promo_only: bool = Query(False),
+    unique_products: bool = Query(False),
+    sort: str = Query("total_price"),
+    page: int = Query(1),
+    page_size: int = Query(20),
+    lat: Optional[float] = Query(None),
+    lon: Optional[float] = Query(None),
+    radius_km: Optional[float] = Query(None),
+) -> ProductQueryParams:
+    try:
+        return ProductQueryParams(
+            q=q,
+            chain=_split_csv_params(chain),
+            store=_split_csv_params(store),
+            category=_split_csv_params(category),
+            price_min=price_min,
+            price_max=price_max,
+            promo_only=promo_only,
+            unique_products=unique_products,
+            sort=sort,
+            page=page,
+            page_size=page_size,
+            lat=lat,
+            lon=lon,
+            radius_km=radius_km,
+        )
+    except ValidationError as exc:
+        raise HTTPException(status_code=422, detail=exc.errors()) from exc
+
+
+@router.get("", response_model=ProductListResponse)
+async def list_products(params: ProductQueryParams = Depends(_params)) -> ProductListResponse:
+    # Allow location-optional queries ONLY for small promotional queries (landing page top deals)
+    is_small_promo_query = params.promo_only and params.page_size <= 100 and params.page == 1
+    has_location = params.lat is not None and params.lon is not None and params.radius_km is not None
+
+    # Enforce location requirement for all queries EXCEPT small promo queries
+    if not has_location and not is_small_promo_query:
+        raise HTTPException(
+            status_code=400,
+            detail="Location parameters (lat, lon, radius_km) are required. Please enable location services."
+        )
+
+    # Validate location if provided
+    if has_location:
+        # Validate location is within New Zealand
+        if not (-47 <= params.lat <= -34 and 165 <= params.lon <= 179):
+            raise HTTPException(
+                status_code=400,
+                detail="Location must be within New Zealand"
+            )
+
+        # Enforce reasonable radius limit (max 10km)
+        if params.radius_km > 10:
+            raise HTTPException(
+                status_code=400,
+                detail="Search radius cannot exceed 10km"
+            )
+
+    async with get_async_session() as session:
+        cache_key = json.dumps(params.dict(), sort_keys=True)
+
+        async def producer() -> dict:
+            response = await fetch_products(session, params)
+            return json.loads(response.json())
+
+        payload = await cached_json(cache_key, settings.api_cache_ttl_seconds, producer)
+        return ProductListResponse.parse_obj(payload)
+
+
+@router.get("/{product_id}", response_model=ProductDetailSchema)
+async def product_detail(product_id: UUID) -> ProductDetailSchema:
+    async with get_async_session() as session:
+        try:
+            product = await fetch_product_detail(session, product_id)
+        except ValueError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        return product
