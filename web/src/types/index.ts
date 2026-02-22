@@ -77,6 +77,52 @@ export enum SortOption {
 
 export type ChainType = "countdown" | "new_world" | "paknsave";
 
+// Trolley types
+export interface TrolleyItem {
+  product_id: string;
+  name: string;
+  brand?: string | null;
+  size?: string | null;
+  chain: string;
+  image_url?: string | null;
+  quantity: number;
+}
+
+export interface TrolleyStoreItem {
+  source_product_id: string;
+  source_product_name: string;
+  quantity: number;
+  available: boolean;
+  matched_product_id?: string | null;
+  matched_product_name?: string | null;
+  price?: number | null;
+  line_total?: number | null;
+}
+
+export interface TrolleyStoreBreakdown {
+  store_id: string;
+  store_name: string;
+  chain: string;
+  distance_km: number;
+  estimated_total: number;
+  items_available: number;
+  items_total: number;
+  is_complete: boolean;
+  items: TrolleyStoreItem[];
+}
+
+export interface TrolleySummary {
+  total_items: number;
+  total_stores: number;
+  complete_stores: number;
+}
+
+export interface TrolleyCompareResponse {
+  stores: TrolleyStoreBreakdown[];
+  items: TrolleyItem[];
+  summary: TrolleySummary;
+}
+
 export interface ProductFilters {
   query?: string;
   category?: string;
