@@ -1,0 +1,185 @@
+@import url("https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400;0,500;0,600;1,400;1,500&family=DM+Sans:wght@300;400;500;600&display=swap");
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Warm off-white palette */
+    --background: 42 18% 97%;
+    --background-secondary: 40 14% 94%;
+    --background-tertiary: 38 10% 91%;
+
+    --foreground: 0 0% 9%;
+    --foreground-secondary: 0 0% 38%;
+    --foreground-tertiary: 0 0% 55%;
+
+    --card: 42 18% 97%;
+    --card-foreground: 0 0% 9%;
+
+    --popover: 42 18% 97%;
+    --popover-foreground: 0 0% 9%;
+
+    /* Primary green */
+    --primary: 158 55% 23%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 38 10% 91%;
+    --secondary-foreground: 0 0% 9%;
+
+    --muted: 38 10% 91%;
+    --muted-foreground: 0 0% 45%;
+
+    --accent: 158 55% 23%;
+    --accent-foreground: 0 0% 100%;
+
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 38 12% 86%;
+    --input: 38 12% 86%;
+    --ring: 158 55% 23%;
+
+    /* Semantic: promo kept for urgency */
+    --promo: 0 72% 51%;
+
+    /* Distance indicator colors */
+    --distance-close: 142 71% 45%;     /* Green - walking distance */
+    --distance-medium: 45 93% 47%;     /* Amber/Yellow - short drive */
+    --distance-far: 0 0% 45%;          /* Gray - further away */
+
+    /* Members/Gold badge */
+    --gold: 45 93% 47%;
+
+    /* Location/Map accent */
+    --location: 217 91% 60%;           /* Blue for location UI */
+
+    /* Tighter radius - professional, not pillowy */
+    --radius: 0.5rem;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply text-foreground bg-background;
+    font-family: "DM Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+
+    /* iOS safe area support */
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
+  }
+
+  html, body, #root {
+    height: 100%;
+    overflow-x: hidden;
+    overscroll-behavior: none;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: "Lora", Georgia, serif;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+  }
+}
+
+@layer utilities {
+  /* Text color utilities */
+  .text-primary-gray {
+    color: hsl(var(--foreground));
+  }
+
+  .text-secondary-gray {
+    color: hsl(var(--foreground-secondary));
+  }
+
+  .text-tertiary-gray {
+    color: hsl(var(--foreground-tertiary));
+  }
+
+  /* Background utilities */
+  .bg-tertiary {
+    background-color: hsl(var(--background-tertiary));
+  }
+
+  /* Border utilities */
+  .border-subtle {
+    border-color: hsl(var(--border));
+  }
+
+  /* Promo badge - restrained */
+  .promo-badge {
+    @apply bg-primary text-white px-2 py-0.5 text-xs font-medium;
+  }
+
+  /* Distance color utilities */
+  .text-distance-close {
+    color: hsl(var(--distance-close));
+  }
+
+  .text-distance-medium {
+    color: hsl(var(--distance-medium));
+  }
+
+  .text-distance-far {
+    color: hsl(var(--distance-far));
+  }
+
+  /* Gold/Members badge */
+  .text-gold {
+    color: hsl(var(--gold));
+  }
+
+  .bg-gold {
+    background-color: hsl(var(--gold));
+  }
+
+  .border-gold {
+    border-color: hsl(var(--gold));
+  }
+
+  /* Location accent */
+  .text-location {
+    color: hsl(var(--location));
+  }
+
+  .bg-location {
+    background-color: hsl(var(--location));
+  }
+
+  .border-location {
+    border-color: hsl(var(--location));
+  }
+}
+
+::selection {
+  background: hsl(var(--primary) / 0.15);
+}
+
+/* MapLibre popup styles */
+.maplibregl-popup-close-button {
+  padding: 4px 8px;
+  font-size: 18px;
+  color: hsl(var(--foreground-secondary));
+  right: 4px;
+  top: 4px;
+}
+
+.maplibregl-popup-close-button:hover {
+  color: hsl(var(--foreground));
+  background: transparent;
+}
+
+.maplibregl-popup-content {
+  border-radius: var(--radius);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  padding: 0;
+}
