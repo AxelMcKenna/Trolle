@@ -109,6 +109,7 @@ def client(mock_redis) -> Iterator[TestClient]:
             with patch("app.routes.health.async_transaction", mock_transaction):
                 with patch("app.routes.products.get_async_session", mock_get_session):
                     with patch("app.routes.stores.get_async_session", mock_get_session):
+                      with patch("app.routes.trolley.get_async_session", mock_get_session):
                         with patch("app.routes.worker.get_async_session", mock_get_session):
                             async def mock_get_redis():
                                 return mock_redis
