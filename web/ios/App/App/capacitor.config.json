@@ -1,0 +1,34 @@
+{
+	"appId": "nz.co.grocify",
+	"appName": "Grocify",
+	"webDir": "dist",
+	"server": {
+		"androidScheme": "https",
+		"iosScheme": "https"
+	},
+	"plugins": {
+		"SplashScreen": {
+			"launchShowDuration": 2000,
+			"launchAutoHide": true,
+			"backgroundColor": "#1fb956",
+			"androidSplashResourceName": "splash",
+			"androidScaleType": "CENTER_CROP",
+			"showSpinner": false,
+			"androidSpinnerStyle": "large",
+			"iosSpinnerStyle": "small",
+			"spinnerColor": "#ffffff",
+			"splashFullScreen": true,
+			"splashImmersive": true
+		},
+		"Geolocation": {}
+	},
+	"ios": {
+		"contentInset": "automatic"
+	},
+	"android": {},
+	"packageClassList": [
+		"GeolocationPlugin",
+		"SplashScreenPlugin",
+		"StatusBarPlugin"
+	]
+}
