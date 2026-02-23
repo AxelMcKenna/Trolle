@@ -12,7 +12,7 @@ class TrolleyItem(BaseModel):
 
 
 class TrolleyCompareRequest(BaseModel):
-    items: list[TrolleyItem] = Field(..., min_items=1, max_items=50)
+    items: list[TrolleyItem] = Field(..., min_length=1, max_length=50)
     lat: float
     lon: float
     radius_km: float = Field(ge=1, le=10)
@@ -62,6 +62,7 @@ class TrolleySourceItem(BaseModel):
     size: Optional[str]
     chain: str
     image_url: Optional[str]
+    department: Optional[str]
     quantity: int
 
 
@@ -77,6 +78,31 @@ class TrolleyCompareResponse(BaseModel):
     summary: TrolleySummary
 
 
+class SuggestionProduct(BaseModel):
+    product_id: str
+    name: str
+    brand: Optional[str]
+    size: Optional[str]
+    image_url: Optional[str]
+    price_nzd: float
+    promo_price_nzd: Optional[float]
+    similarity: float
+
+
+class SuggestionItem(BaseModel):
+    source_product_id: str
+    suggestions: list[SuggestionProduct]
+
+
+class TrolleySuggestionsRequest(BaseModel):
+    store_id: UUID
+    items: list[TrolleyItem] = Field(..., min_length=1, max_length=50)
+
+
+class TrolleySuggestionsResponse(BaseModel):
+    items: list[SuggestionItem]
+
+
 __all__ = [
     "TrolleyItem",
     "TrolleyCompareRequest",
@@ -85,4 +111,8 @@ __all__ = [
     "TrolleyStoreItem",
     "TrolleySourceItem",
     "TrolleySummary",
+    "SuggestionProduct",
+    "SuggestionItem",
+    "TrolleySuggestionsRequest",
+    "TrolleySuggestionsResponse",
 ]

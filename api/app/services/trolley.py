@@ -91,6 +91,7 @@ async def compare_trolley(
             product_name=product.name,
             product_brand=product.brand,
             product_size=product.size,
+            product_department=product.department,
             target_chains=target_chains,
             store_ids=store_ids,
         )
@@ -131,6 +132,7 @@ async def compare_trolley(
                 "size": product.size,
                 "chain": product.chain,
                 "image_url": product.image_url,
+                "department": product.department,
                 "quantity": quantity_map[pid],
             })
 
