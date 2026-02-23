@@ -85,6 +85,7 @@ export interface TrolleyItem {
   size?: string | null;
   chain: string;
   image_url?: string | null;
+  department?: string | null;
   quantity: number;
 }
 
@@ -121,6 +122,26 @@ export interface TrolleyCompareResponse {
   stores: TrolleyStoreBreakdown[];
   items: TrolleyItem[];
   summary: TrolleySummary;
+}
+
+export interface SuggestionProduct {
+  product_id: string;
+  name: string;
+  brand?: string | null;
+  size?: string | null;
+  image_url?: string | null;
+  price_nzd: number;
+  promo_price_nzd?: number | null;
+  similarity: number;
+}
+
+export interface SuggestionItem {
+  source_product_id: string;
+  suggestions: SuggestionProduct[];
+}
+
+export interface TrolleySuggestionsResponse {
+  items: SuggestionItem[];
 }
 
 export interface ProductFilters {

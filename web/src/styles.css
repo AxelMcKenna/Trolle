@@ -7,9 +7,9 @@
 @layer base {
   :root {
     /* Warm off-white palette */
-    --background: 42 18% 97%;
-    --background-secondary: 40 14% 94%;
-    --background-tertiary: 38 10% 91%;
+    --background: 42 24% 94%;
+    --background-secondary: 40 20% 90%;
+    --background-tertiary: 38 16% 86%;
 
     --foreground: 0 0% 9%;
     --foreground-secondary: 0 0% 38%;
@@ -21,8 +21,8 @@
     --popover: 42 18% 97%;
     --popover-foreground: 0 0% 9%;
 
-    /* Primary green */
-    --primary: 158 55% 23%;
+    /* Primary royal blue */
+    --primary: 225 73% 26%;
     --primary-foreground: 0 0% 100%;
 
     --secondary: 38 10% 91%;
@@ -31,7 +31,7 @@
     --muted: 38 10% 91%;
     --muted-foreground: 0 0% 45%;
 
-    --accent: 158 55% 23%;
+    --accent: 225 73% 26%;
     --accent-foreground: 0 0% 100%;
 
     --destructive: 0 72% 51%;
@@ -39,7 +39,7 @@
 
     --border: 38 12% 86%;
     --input: 38 12% 86%;
-    --ring: 158 55% 23%;
+    --ring: 225 73% 26%;
 
     /* Semantic: promo kept for urgency */
     --promo: 0 72% 51%;

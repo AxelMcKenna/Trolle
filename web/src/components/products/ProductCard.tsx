@@ -1,10 +1,11 @@
 import { memo, useState } from "react";
-import { Store, Clock, Crown, ShoppingCart, MapPin, Eye } from "lucide-react";
+import { Store, Clock, Crown, ShoppingCart, MapPin, Eye, Check } from "lucide-react";
 import { Product } from "@/types";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
+import { useTrolleyContext } from "@/contexts/TrolleyContext";
 import { QuickView } from "./QuickView";
 import {
   formatPromoEndDate,
@@ -24,6 +25,9 @@ const ProductCardComponent = ({
 }: ProductCardProps) => {
   const [imageError, setImageError] = useState(false);
   const [showQuickView, setShowQuickView] = useState(false);
+  const { addItem, removeItem, isInTrolley, getItemQuantity } = useTrolleyContext();
+  const inTrolley = isInTrolley(product.id);
+  const trolleyQty = getItemQuantity(product.id);
   const hasPromo = product.price.promo_price_nzd &&
     product.price.promo_price_nzd < product.price.price_nzd;
 
@@ -157,6 +161,33 @@ const ProductCardComponent = ({
               ${product.price.unit_price.toFixed(2)} / {product.price.unit_measure}
             </p>
           )}
+
+          {/* Add to Trolley */}
+          <Button
+            variant={inTrolley ? "secondary" : "outline"}
+            size="sm"
+            className="w-full mt-3 text-xs"
+            onClick={(e) => {
+              e.stopPropagation();
+              if (inTrolley) {
+                removeItem(product.id);
+              } else {
+                addItem(product);
+              }
+            }}
+          >
+            {inTrolley ? (
+              <>
+                <Check className="h-3 w-3 mr-1" />
+                In Trolley{trolleyQty > 1 ? ` (x${trolleyQty})` : ''}
+              </>
+            ) : (
+              <>
+                <ShoppingCart className="h-3 w-3 mr-1" />
+                Add to Trolley
+              </>
+            )}
+          </Button>
         </CardContent>
       </Card>
 

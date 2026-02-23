@@ -9,7 +9,7 @@ import { StoreMapSkeleton } from '@/components/stores/StoreMapSkeleton';
 import { useProducts } from '@/hooks/useProducts';
 import { useLocationContext } from '@/contexts/LocationContext';
 import { useStores } from '@/hooks/useStores';
-import { Search, ArrowRight, MapPin } from 'lucide-react';
+import { Search, ArrowRight, MapPin, ShoppingCart } from 'lucide-react';
 import { SortOption } from '@/types';
 import { useIntersectionObserver } from '@/hooks/useIntersectionObserver';
 
@@ -163,6 +163,27 @@ export const Landing = () => {
               <p className="text-muted-foreground">No deals available</p>
             </div>
           )}
+        </section>
+
+        {/* Start Shopping */}
+        <section className="py-12 border-t">
+          <div className="bg-primary/5 rounded-xl p-8 flex flex-col md:flex-row items-center gap-6">
+            <div className="flex-shrink-0 w-14 h-14 rounded-full bg-primary/10 flex items-center justify-center">
+              <ShoppingCart className="h-7 w-7 text-primary" />
+            </div>
+            <div className="flex-1 text-center md:text-left">
+              <h2 className="text-xl font-semibold text-foreground mb-1">
+                Build Your Trolley
+              </h2>
+              <p className="text-sm text-muted-foreground max-w-md">
+                Add your weekly shop and instantly see which nearby store is cheapest for your entire list.
+              </p>
+            </div>
+            <Button onClick={() => navigate('/trolley')} className="flex-shrink-0">
+              Start Shopping
+              <ArrowRight className="ml-2 h-4 w-4" />
+            </Button>
+          </div>
         </section>
 
         {/* Store Map */}

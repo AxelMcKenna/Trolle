@@ -1,10 +1,11 @@
-import { ExternalLink, Store, Clock, Crown, Package, MapPin } from "lucide-react";
+import { ExternalLink, Store, Clock, Crown, Package, MapPin, ShoppingCart, Check } from "lucide-react";
 import { Product } from "@/types";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
+import { useTrolleyContext } from "@/contexts/TrolleyContext";
 import {
   formatPromoEndDate,
   formatDistanceAway,
@@ -23,8 +24,11 @@ export const QuickView = ({
   isOpen,
   onClose,
 }: QuickViewProps) => {
+  const { addItem, removeItem, isInTrolley } = useTrolleyContext();
+
   if (!product) return null;
 
+  const inTrolley = isInTrolley(product.id);
   const hasPromo = product.price.promo_price_nzd && product.price.promo_price_nzd < product.price.price_nzd;
   const currentPrice = product.price.promo_price_nzd ?? product.price.price_nzd;
   const savingsPercent = calculateSavingsPercent(product.price.price_nzd, product.price.promo_price_nzd);
@@ -163,6 +167,29 @@ export const QuickView = ({
 
             {/* Actions */}
             <div className="flex gap-2">
+              <Button
+                variant={inTrolley ? "secondary" : "outline"}
+                className="flex-1"
+                onClick={() => {
+                  if (inTrolley) {
+                    removeItem(product.id);
+                  } else {
+                    addItem(product);
+                  }
+                }}
+              >
+                {inTrolley ? (
+                  <>
+                    <Check className="h-4 w-4 mr-2" />
+                    In Trolley
+                  </>
+                ) : (
+                  <>
+                    <ShoppingCart className="h-4 w-4 mr-2" />
+                    Add to Trolley
+                  </>
+                )}
+              </Button>
               {product.product_url && (
                 <Button asChild className="flex-1 bg-primary hover:bg-accent">
                   <a

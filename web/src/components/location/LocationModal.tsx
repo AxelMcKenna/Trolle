@@ -177,18 +177,18 @@ export const LocationModal = () => {
           <>
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
-                <CheckCircle2 className="w-6 h-6 text-green-600" />
+                <CheckCircle2 className="w-6 h-6 text-blue-600" />
                 Location Set
               </DialogTitle>
             </DialogHeader>
 
             <div className="space-y-6 py-4">
-              <div className="p-4 bg-green-50 border border-green-200 rounded-md">
-                <p className="text-sm text-green-800 mb-1">Using your current location</p>
-                <p className="text-sm font-medium text-green-900">
+              <div className="p-4 bg-blue-50 border border-blue-200 rounded-md">
+                <p className="text-sm text-blue-800 mb-1">Using your current location</p>
+                <p className="text-sm font-medium text-blue-900">
                   {locationAddress || 'Loading address...'}
                 </p>
-                <p className="text-xs text-green-700 mt-1">
+                <p className="text-xs text-blue-700 mt-1">
                   {location.lat.toFixed(4)}, {location.lon.toFixed(4)}
                 </p>
               </div>

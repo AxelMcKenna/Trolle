@@ -1,6 +1,7 @@
-import { Search, MapPin } from "lucide-react";
+import { Search, MapPin, ShoppingCart } from "lucide-react";
 import { Link } from "react-router-dom";
 import { useLocationContext } from "@/contexts/LocationContext";
+import { useTrolleyContext } from "@/contexts/TrolleyContext";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 
@@ -18,6 +19,7 @@ export const Header = ({
   variant = 'compact',
 }: HeaderProps) => {
   const { radiusKm, isLocationSet, openLocationModal } = useLocationContext();
+  const { itemCount } = useTrolleyContext();
 
   if (variant === 'landing') {
     return (
@@ -69,18 +71,34 @@ export const Header = ({
             </div>
           </div>
 
-          {/* Location button - hugs right edge */}
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={openLocationModal}
-            className="flex-shrink-0 text-white hover:bg-white/10 gap-2"
-          >
-            <MapPin className="h-4 w-4" />
-            <span className="hidden sm:inline">
-              {isLocationSet ? `${radiusKm} km` : 'Location'}
-            </span>
-          </Button>
+          {/* Right actions */}
+          <div className="flex items-center gap-1 flex-shrink-0">
+            <Link to="/trolley">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-white hover:bg-white/10 relative"
+              >
+                <ShoppingCart className="h-4 w-4" />
+                {itemCount > 0 && (
+                  <span className="absolute -top-1 -right-1 bg-white text-primary text-[10px] font-bold rounded-full h-4 min-w-[16px] flex items-center justify-center px-0.5">
+                    {itemCount}
+                  </span>
+                )}
+              </Button>
+            </Link>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={openLocationModal}
+              className="text-white hover:bg-white/10 gap-2"
+            >
+              <MapPin className="h-4 w-4" />
+              <span className="hidden sm:inline">
+                {isLocationSet ? `${radiusKm} km` : 'Location'}
+              </span>
+            </Button>
+          </div>
         </div>
       </div>
     </header>
