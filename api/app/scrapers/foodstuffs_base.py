@@ -38,90 +38,169 @@ class FoodstuffsAPIScraper(Scraper, APIAuthBase):
     default_store_id: str = None
     store_data_file: str = None  # e.g., "newworld_stores.json"
 
-    # Grocery categories: (category0NI, category1NI) tuples
+    # Foodstuffs API categories: (category0NI, category1NI) as used in the
+    # search filter.  These must match the *actual* API values (which changed
+    # in late 2025 — run a facet probe if results drop to zero).
     categories = [
         # Fruit & Vegetables
         ("Fruit & Vegetables", "Fruit"),
         ("Fruit & Vegetables", "Vegetables"),
-        ("Fruit & Vegetables", "Salad"),
-        ("Fruit & Vegetables", "Organic Fruit & Vegetables"),
-        # Meat & Seafood
-        ("Meat & Seafood", "Beef & Veal"),
-        ("Meat & Seafood", "Chicken"),
-        ("Meat & Seafood", "Pork"),
-        ("Meat & Seafood", "Lamb"),
-        ("Meat & Seafood", "Mince & Patties"),
-        ("Meat & Seafood", "Sausages & Burgers"),
-        ("Meat & Seafood", "Seafood"),
-        ("Meat & Seafood", "Deli & Cooked Meats"),
-        # Chilled, Dairy & Eggs
-        ("Chilled, Dairy & Eggs", "Milk"),
-        ("Chilled, Dairy & Eggs", "Cheese"),
-        ("Chilled, Dairy & Eggs", "Yoghurt"),
-        ("Chilled, Dairy & Eggs", "Eggs"),
-        ("Chilled, Dairy & Eggs", "Butter & Margarine"),
-        ("Chilled, Dairy & Eggs", "Cream & Sour Cream"),
-        ("Chilled, Dairy & Eggs", "Dips & Pesto"),
-        ("Chilled, Dairy & Eggs", "Fresh Pasta & Sauces"),
+        ("Fruit & Vegetables", "Fresh Salad & Herbs"),
+        # Meat, Poultry & Seafood
+        ("Meat, Poultry & Seafood", "Beef"),
+        ("Meat, Poultry & Seafood", "Chicken & Poultry"),
+        ("Meat, Poultry & Seafood", "Pork & Ham"),
+        ("Meat, Poultry & Seafood", "Lamb"),
+        ("Meat, Poultry & Seafood", "Mince, Sausages & Meatballs"),
+        ("Meat, Poultry & Seafood", "Deli Meats"),
+        # Fridge, Deli & Eggs
+        ("Fridge, Deli & Eggs", "Milk"),
+        ("Fridge, Deli & Eggs", "Cheese"),
+        ("Fridge, Deli & Eggs", "Yoghurt"),
+        ("Fridge, Deli & Eggs", "Eggs"),
+        ("Fridge, Deli & Eggs", "Butter & Margarine"),
+        ("Fridge, Deli & Eggs", "Cream, Custard & Desserts"),
+        ("Fridge, Deli & Eggs", "Deli Meats & Smoked Fish"),
         # Bakery
-        ("Bakery", "Bread"),
-        ("Bakery", "Rolls & Buns"),
-        ("Bakery", "Wraps, Pita & Flatbread"),
-        ("Bakery", "Cakes & Muffins"),
+        ("Bakery", "Sliced & Packaged Bread"),
+        ("Bakery", "In-Store Bakery"),
+        ("Bakery", "Bagels, Crumpets & Pancakes"),
+        ("Bakery", "Gluten Free, Low Carb & Keto"),
         # Pantry
-        ("Pantry", "Canned Goods"),
+        ("Pantry", "Canned Foods & Packets"),
         ("Pantry", "Pasta, Rice & Noodles"),
-        ("Pantry", "Sauces & Condiments"),
-        ("Pantry", "Baking"),
+        ("Pantry", "Table Sauces, Dressings & Condiments"),
+        ("Pantry", "Baking Supplies & Sugar"),
         ("Pantry", "Breakfast Cereals"),
-        ("Pantry", "Spreads"),
         ("Pantry", "Oil & Vinegar"),
-        ("Pantry", "World Foods"),
-        ("Pantry", "Snack Foods"),
+        ("Pantry", "Long Life & Dairy Free Milk"),
+        ("Pantry", "Spices, Seasoning & Coatings"),
+        ("Pantry", "Biscuits & Crackers"),
+        ("Pantry", "Chips, Nuts & Snacks"),
+        ("Pantry", "Chocolate, Sweets & Chewing Gum"),
         # Frozen
-        ("Frozen", "Frozen Vegetables"),
-        ("Frozen", "Frozen Meals"),
-        ("Frozen", "Ice Cream & Desserts"),
-        ("Frozen", "Frozen Chips & Wedges"),
-        ("Frozen", "Frozen Meat & Seafood"),
-        ("Frozen", "Frozen Pizza"),
-        # Drinks
-        ("Drinks", "Water"),
-        ("Drinks", "Soft Drinks"),
-        ("Drinks", "Juice"),
-        ("Drinks", "Coffee"),
-        ("Drinks", "Tea"),
-        ("Drinks", "Energy & Sports Drinks"),
-        # Snacks & Confectionery
-        ("Snacks & Confectionery", "Chips & Crackers"),
-        ("Snacks & Confectionery", "Chocolate"),
-        ("Snacks & Confectionery", "Biscuits"),
-        ("Snacks & Confectionery", "Nuts & Dried Fruit"),
-        ("Snacks & Confectionery", "Lollies"),
-        # Health & Beauty
-        ("Health & Beauty", "Shampoo & Conditioner"),
-        ("Health & Beauty", "Body Wash & Soap"),
-        ("Health & Beauty", "Oral Care"),
-        ("Health & Beauty", "Skincare"),
-        # Household
-        ("Household", "Cleaning"),
-        ("Household", "Laundry"),
-        ("Household", "Toilet Paper & Tissues"),
-        ("Household", "Kitchen"),
-        # Baby & Child
-        ("Baby & Child", "Nappies"),
-        ("Baby & Child", "Baby Food"),
-        ("Baby & Child", "Baby Care"),
-        # Pet
-        ("Pet", "Dog Food"),
-        ("Pet", "Cat Food"),
-        ("Pet", "Pet Care"),
+        ("Frozen", "Frozen Chips & Hash Browns"),
+        ("Frozen", "Frozen Chicken & Meat"),
+        ("Frozen", "Frozen Pizza & Ready Meals"),
+        ("Frozen", "Frozen Fruit & Desserts"),
+        ("Frozen", "Frozen Dumplings, Pies & Snacks"),
+        ("Frozen", "Frozen Pastry & Bread"),
+        # Hot & Cold Drinks
+        ("Hot & Cold Drinks", "Water"),
+        ("Hot & Cold Drinks", "Soft Drinks & Mixers"),
+        ("Hot & Cold Drinks", "Juice & Smoothies"),
+        ("Hot & Cold Drinks", "Coffee"),
+        ("Hot & Cold Drinks", "Tea"),
+        ("Hot & Cold Drinks", "Sports & Energy Drinks"),
+        ("Hot & Cold Drinks", "Hot Chocolate & Milk Drinks"),
+        # Snacks, Treats & Easy Meals
+        ("Snacks, Treats & Easy Meals", "Chips, Nuts & Snacks"),
+        ("Snacks, Treats & Easy Meals", "Chocolate, Sweets & Chewing Gum"),
+        ("Snacks, Treats & Easy Meals", "Ready to Eat"),
+        ("Snacks, Treats & Easy Meals", "Lunchbox Snacks"),
+        ("Snacks, Treats & Easy Meals", "Easy Meals & Meal Kits"),
+        # Health & Body
+        ("Health & Body", "Tissues & Cotton Wool"),
+        # Household & Cleaning
+        ("Household & Cleaning", "Toilet Paper, Tissues & Paper Towels"),
+        ("Household & Cleaning", "Food Wrap, Storage & Bags"),
+        ("Household & Cleaning", "Garage & Outdoor"),
+        ("Household & Cleaning", "Stationery & Entertainment"),
+        # Baby & Toddler
+        ("Baby & Toddler", "Baby Wipes"),
+        # Pets
+        ("Pets", "Dog"),
+        ("Pets", "Cat"),
         # Beer, Wine & Cider
         ("Beer, Wine & Cider", "Beer"),
         ("Beer, Wine & Cider", "Red Wine"),
         ("Beer, Wine & Cider", "White Wine"),
         ("Beer, Wine & Cider", "Cider"),
+        # Seasonal
+        ("Easter", "Easter"),
     ]
+
+    # Map Foodstuffs API category names → our canonical category/subcategory.
+    # Keys are (level0, level1) from the API; values are (category, subcategory)
+    # for our DB schema (matching CategoryFilter.tsx and CATEGORY_HIERARCHY).
+    _CATEGORY_MAP: dict[tuple[str, str], tuple[str, str]] = {
+        # Fruit & Vegetables (pass-through)
+        ("Fruit & Vegetables", "Fruit"): ("Fruit & Vegetables", "Fruit"),
+        ("Fruit & Vegetables", "Vegetables"): ("Fruit & Vegetables", "Vegetables"),
+        ("Fruit & Vegetables", "Fresh Salad & Herbs"): ("Fruit & Vegetables", "Salad"),
+        # Meat
+        ("Meat, Poultry & Seafood", "Beef"): ("Meat & Seafood", "Beef & Veal"),
+        ("Meat, Poultry & Seafood", "Chicken & Poultry"): ("Meat & Seafood", "Chicken"),
+        ("Meat, Poultry & Seafood", "Pork & Ham"): ("Meat & Seafood", "Pork"),
+        ("Meat, Poultry & Seafood", "Lamb"): ("Meat & Seafood", "Lamb"),
+        ("Meat, Poultry & Seafood", "Mince, Sausages & Meatballs"): ("Meat & Seafood", "Mince & Patties"),
+        ("Meat, Poultry & Seafood", "Deli Meats"): ("Meat & Seafood", "Deli & Cooked Meats"),
+        # Fridge / Dairy
+        ("Fridge, Deli & Eggs", "Milk"): ("Chilled, Dairy & Eggs", "Milk"),
+        ("Fridge, Deli & Eggs", "Cheese"): ("Chilled, Dairy & Eggs", "Cheese"),
+        ("Fridge, Deli & Eggs", "Yoghurt"): ("Chilled, Dairy & Eggs", "Yoghurt"),
+        ("Fridge, Deli & Eggs", "Eggs"): ("Chilled, Dairy & Eggs", "Eggs"),
+        ("Fridge, Deli & Eggs", "Butter & Margarine"): ("Chilled, Dairy & Eggs", "Butter & Margarine"),
+        ("Fridge, Deli & Eggs", "Cream, Custard & Desserts"): ("Chilled, Dairy & Eggs", "Cream & Sour Cream"),
+        ("Fridge, Deli & Eggs", "Deli Meats & Smoked Fish"): ("Chilled, Dairy & Eggs", "Deli & Cooked Meats"),
+        # Bakery
+        ("Bakery", "Sliced & Packaged Bread"): ("Bakery", "Bread"),
+        ("Bakery", "In-Store Bakery"): ("Bakery", "Cakes & Muffins"),
+        ("Bakery", "Bagels, Crumpets & Pancakes"): ("Bakery", "Rolls & Buns"),
+        ("Bakery", "Gluten Free, Low Carb & Keto"): ("Bakery", "Bread"),
+        # Pantry
+        ("Pantry", "Canned Foods & Packets"): ("Pantry", "Canned Goods"),
+        ("Pantry", "Pasta, Rice & Noodles"): ("Pantry", "Pasta, Rice & Noodles"),
+        ("Pantry", "Table Sauces, Dressings & Condiments"): ("Pantry", "Sauces & Condiments"),
+        ("Pantry", "Baking Supplies & Sugar"): ("Pantry", "Baking"),
+        ("Pantry", "Breakfast Cereals"): ("Pantry", "Breakfast Cereals"),
+        ("Pantry", "Oil & Vinegar"): ("Pantry", "Oil & Vinegar"),
+        ("Pantry", "Long Life & Dairy Free Milk"): ("Chilled, Dairy & Eggs", "Milk"),
+        ("Pantry", "Spices, Seasoning & Coatings"): ("Pantry", "Sauces & Condiments"),
+        ("Pantry", "Biscuits & Crackers"): ("Snacks & Confectionery", "Biscuits"),
+        ("Pantry", "Chips, Nuts & Snacks"): ("Snacks & Confectionery", "Chips & Crackers"),
+        ("Pantry", "Chocolate, Sweets & Chewing Gum"): ("Snacks & Confectionery", "Chocolate"),
+        # Frozen
+        ("Frozen", "Frozen Chips & Hash Browns"): ("Frozen", "Frozen Chips & Wedges"),
+        ("Frozen", "Frozen Chicken & Meat"): ("Frozen", "Frozen Meat & Seafood"),
+        ("Frozen", "Frozen Pizza & Ready Meals"): ("Frozen", "Frozen Pizza"),
+        ("Frozen", "Frozen Fruit & Desserts"): ("Frozen", "Ice Cream & Desserts"),
+        ("Frozen", "Frozen Dumplings, Pies & Snacks"): ("Frozen", "Frozen Meals"),
+        ("Frozen", "Frozen Pastry & Bread"): ("Frozen", "Frozen Meals"),
+        # Drinks
+        ("Hot & Cold Drinks", "Water"): ("Drinks", "Water"),
+        ("Hot & Cold Drinks", "Soft Drinks & Mixers"): ("Drinks", "Soft Drinks"),
+        ("Hot & Cold Drinks", "Juice & Smoothies"): ("Drinks", "Juice"),
+        ("Hot & Cold Drinks", "Coffee"): ("Drinks", "Coffee"),
+        ("Hot & Cold Drinks", "Tea"): ("Drinks", "Tea"),
+        ("Hot & Cold Drinks", "Sports & Energy Drinks"): ("Drinks", "Energy & Sports Drinks"),
+        ("Hot & Cold Drinks", "Hot Chocolate & Milk Drinks"): ("Drinks", "Coffee"),
+        # Snacks
+        ("Snacks, Treats & Easy Meals", "Chips, Nuts & Snacks"): ("Snacks & Confectionery", "Chips & Crackers"),
+        ("Snacks, Treats & Easy Meals", "Chocolate, Sweets & Chewing Gum"): ("Snacks & Confectionery", "Chocolate"),
+        ("Snacks, Treats & Easy Meals", "Ready to Eat"): ("Snacks & Confectionery", "Chips & Crackers"),
+        ("Snacks, Treats & Easy Meals", "Lunchbox Snacks"): ("Snacks & Confectionery", "Biscuits"),
+        ("Snacks, Treats & Easy Meals", "Easy Meals & Meal Kits"): ("Pantry", "Canned Goods"),
+        # Health & Body
+        ("Health & Body", "Tissues & Cotton Wool"): ("Health & Beauty", None),
+        # Household
+        ("Household & Cleaning", "Toilet Paper, Tissues & Paper Towels"): ("Household", "Toilet Paper & Tissues"),
+        ("Household & Cleaning", "Food Wrap, Storage & Bags"): ("Household", "Cleaning"),
+        ("Household & Cleaning", "Garage & Outdoor"): ("Household", "Cleaning"),
+        ("Household & Cleaning", "Stationery & Entertainment"): ("Household", "Cleaning"),
+        # Baby
+        ("Baby & Toddler", "Baby Wipes"): ("Baby & Child", "Nappies"),
+        # Pet
+        ("Pets", "Dog"): ("Pet", "Dog Food"),
+        ("Pets", "Cat"): ("Pet", "Cat Food"),
+        # Beer, Wine & Cider (pass-through)
+        ("Beer, Wine & Cider", "Beer"): ("Beer, Wine & Cider", None),
+        ("Beer, Wine & Cider", "Red Wine"): ("Beer, Wine & Cider", None),
+        ("Beer, Wine & Cider", "White Wine"): ("Beer, Wine & Cider", None),
+        ("Beer, Wine & Cider", "Cider"): ("Beer, Wine & Cider", None),
+        # Seasonal
+        ("Easter", "Easter"): ("Snacks & Confectionery", "Chocolate"),
+    }
 
     def __init__(self, scrape_all_stores: bool = True):
         Scraper.__init__(self)
@@ -300,8 +379,19 @@ class FoodstuffsAPIScraper(Scraper, APIAuthBase):
             logger.warning(f"Cookie-only API probe failed for {self.chain}: {e}")
             return False
 
-    def _parse_product(self, product_data: dict) -> dict:
-        """Parse a product from API response into our standard format."""
+    def _parse_product(
+        self,
+        product_data: dict,
+        level0: Optional[str] = None,
+        level1: Optional[str] = None,
+    ) -> dict:
+        """Parse a product from API response into our standard format.
+
+        *level0* and *level1* are the API category filter values used to
+        fetch this product (e.g. ``"Fridge, Deli & Eggs"``, ``"Milk"``).
+        They are mapped to our canonical category/subcategory via
+        ``_CATEGORY_MAP``.
+        """
         product_id = product_data.get("productId", "")
         brand = product_data.get("brand", "")
         name = product_data.get("name", "")
@@ -351,10 +441,17 @@ class FoodstuffsAPIScraper(Scraper, APIAuthBase):
         slug = "".join(c for c in slug if c.isalnum() or c == "-")
         url = f"https://{domain}/shop/product/{product_id.lower().replace('-', '_')}?name={slug}"
 
-        # Extract category/subcategory from API category fields
-        # Foodstuffs category0NI values already match our canonical category names
-        category = product_data.get("category0NI", "") or None
-        subcategory = product_data.get("category1NI", "") or None
+        # Map API categories to our canonical category/subcategory
+        category: Optional[str] = None
+        subcategory: Optional[str] = None
+        if level0 and level1:
+            mapped = self._CATEGORY_MAP.get((level0, level1))
+            if mapped:
+                category, subcategory = mapped
+            else:
+                # Unmapped — store the API name as department for debugging
+                category = level0
+                subcategory = level1
 
         # Extract size from product data
         size_value = product_data.get("displayName", "") or ""
@@ -383,7 +480,7 @@ class FoodstuffsAPIScraper(Scraper, APIAuthBase):
             image_url=image_url,
             brand=brand or None,
             category=category,
-            department=category,
+            department=level0,
             subcategory=subcategory,
             size=size_value or None,
             unit_price=unit_price,
@@ -565,7 +662,7 @@ class FoodstuffsAPIScraper(Scraper, APIAuthBase):
 
                     for product_data in products_data:
                         try:
-                            product = self._parse_product(product_data)
+                            product = self._parse_product(product_data, level0, level1)
                             product["store_id"] = store_id
                             product["store_name"] = store_name
                             all_products.append(product)
@@ -573,7 +670,7 @@ class FoodstuffsAPIScraper(Scraper, APIAuthBase):
                             logger.error(f"Error parsing product: {e}")
 
                     # Fetch remaining pages if needed
-                    hits_per_page = 100
+                    hits_per_page = 50
                     total_pages = (total_products + hits_per_page - 1) // hits_per_page
 
                     for page_num in range(1, total_pages):
@@ -584,7 +681,7 @@ class FoodstuffsAPIScraper(Scraper, APIAuthBase):
 
                         for product_data in products_data:
                             try:
-                                product = self._parse_product(product_data)
+                                product = self._parse_product(product_data, level0, level1)
                                 product["store_id"] = store_id
                                 product["store_name"] = store_name
                                 all_products.append(product)

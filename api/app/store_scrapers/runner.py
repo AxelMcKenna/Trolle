@@ -13,9 +13,11 @@ Usage:
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import os
 import sys
+from pathlib import Path
 from typing import Dict, Type
 
 from sqlalchemy import text
@@ -32,6 +34,12 @@ logger = logging.getLogger(__name__)
 
 STORE_CHAINS: Dict[str, Type[StoreLocationScraper]] = {
     "countdown": CountdownLocationScraper,
+}
+
+# Foodstuffs chains use static JSON store lists (no scraper needed)
+_JSON_STORE_CHAINS: Dict[str, str] = {
+    "paknsave": "paknsave_stores.json",
+    "new_world": "newworld_stores.json",
 }
 
 CHAIN_DISPLAY_NAMES: Dict[str, str] = {
@@ -144,11 +152,42 @@ async def upsert_stores(chain: str, stores: list[dict]) -> tuple[int, int]:
     return upserted, skipped
 
 
+async def run_json_chain(chain: str, filename: str) -> None:
+    """Load stores from a static JSON file and upsert into DB."""
+    data_dir = Path(__file__).resolve().parent.parent / "data"
+    json_path = data_dir / filename
+
+    logger.info(f"[{chain}] Loading stores from {json_path}")
+    try:
+        with open(json_path) as f:
+            stores = json.load(f)
+
+        logger.info(f"[{chain}] Loaded {len(stores)} stores from JSON")
+
+        if stores:
+            upserted, skipped = await upsert_stores(chain, stores)
+            logger.info(f"[{chain}] Upserted {upserted}, skipped {skipped}")
+        else:
+            logger.warning(f"[{chain}] No stores in JSON file")
+
+    except FileNotFoundError:
+        logger.error(f"[{chain}] JSON file not found: {json_path}")
+    except Exception:
+        logger.exception(f"[{chain}] Failed to load stores from JSON")
+
+
 async def run_chain(chain: str) -> None:
-    """Run a single store scraper and upsert results."""
+    """Run a single store scraper (or JSON load) and upsert results."""
+    # Check JSON-based chains first
+    json_file = _JSON_STORE_CHAINS.get(chain)
+    if json_file:
+        await run_json_chain(chain, json_file)
+        return
+
     scraper_cls = STORE_CHAINS.get(chain)
     if not scraper_cls:
-        logger.error(f"Unknown chain: {chain}. Available: {', '.join(STORE_CHAINS)}")
+        all_chains = list(STORE_CHAINS.keys()) + list(_JSON_STORE_CHAINS.keys())
+        logger.error(f"Unknown chain: {chain}. Available: {', '.join(all_chains)}")
         return
 
     logger.info(f"[{chain}] Starting store scrape...")
@@ -171,7 +210,7 @@ async def run_chain(chain: str) -> None:
 async def main(chains: list[str] | None = None) -> None:
     """Run store scrapers for given chains (or all)."""
     if not chains:
-        chains = list(STORE_CHAINS.keys())
+        chains = list(STORE_CHAINS.keys()) + list(_JSON_STORE_CHAINS.keys())
 
     logger.info(f"Running store scrapers for: {', '.join(chains)}")
 
