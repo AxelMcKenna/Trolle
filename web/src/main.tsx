@@ -1,6 +1,7 @@
 import React, { lazy, Suspense } from "react";
 import ReactDOM from "react-dom/client";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { LocationProvider } from "@/contexts/LocationContext";
 import { TrolleyProvider } from "@/contexts/TrolleyContext";
 import { Toaster } from "sonner";
@@ -26,21 +27,23 @@ const PageLoader = () => (
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
-    <BrowserRouter>
-      <LocationProvider>
-        <TrolleyProvider>
-          <Toaster position="top-right" richColors closeButton />
-          <Suspense fallback={<PageLoader />}>
-            <Routes>
-              <Route path="/" element={<Landing />} />
-              <Route path="/explore" element={<Explore />} />
-              <Route path="/trolley" element={<Trolley />} />
-              <Route path="/product/:id" element={<Navigate to="/explore" replace />} />
-            </Routes>
-          </Suspense>
-        </TrolleyProvider>
-      </LocationProvider>
-    </BrowserRouter>
+    <ErrorBoundary>
+      <BrowserRouter>
+        <LocationProvider>
+          <TrolleyProvider>
+            <Toaster position="top-right" richColors closeButton />
+            <Suspense fallback={<PageLoader />}>
+              <Routes>
+                <Route path="/" element={<Landing />} />
+                <Route path="/explore" element={<Explore />} />
+                <Route path="/trolley" element={<Trolley />} />
+                <Route path="/product/:id" element={<Navigate to="/explore" replace />} />
+              </Routes>
+            </Suspense>
+          </TrolleyProvider>
+        </LocationProvider>
+      </BrowserRouter>
+    </ErrorBoundary>
     <Analytics />
     <SpeedInsights />
   </React.StrictMode>

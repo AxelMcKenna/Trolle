@@ -1,6 +1,6 @@
 {
-	"appId": "nz.co.grocify",
-	"appName": "Grocify",
+	"appId": "nz.co.trolle",
+	"appName": "Troll-E",
 	"webDir": "dist",
 	"server": {
 		"androidScheme": "https",

@@ -20,7 +20,7 @@ export async function reverseGeocode(
         `format=json&lat=${location.lat}&lon=${location.lon}&zoom=14&addressdetails=1`,
       {
         headers: {
-          "User-Agent": "Grocify/1.0",
+          "User-Agent": "Troll-E/1.0",
         },
       }
     );

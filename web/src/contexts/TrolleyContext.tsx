@@ -15,7 +15,7 @@ interface TrolleyContextType {
 
 const TrolleyContext = createContext<TrolleyContextType | undefined>(undefined);
 
-const STORAGE_KEY = 'grocify.trolley';
+const STORAGE_KEY = 'trolle.trolley';
 const MAX_ITEMS = 50;
 
 export const TrolleyProvider = ({ children }: { children: ReactNode }) => {

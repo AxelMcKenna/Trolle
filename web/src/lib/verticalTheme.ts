@@ -16,12 +16,12 @@ type ThemePalette = {
 };
 
 const DEFAULT_THEME: VerticalTheme = "grocery";
-const STORAGE_KEY = "grocify.verticalTheme";
+const STORAGE_KEY = "trolle.verticalTheme";
 const QUERY_PARAM_KEY = "vertical";
 
 const THEME_ALIASES: Record<string, VerticalTheme> = {
   grocery: "grocery",
-  grocify: "grocery",
+  trolle: "grocery",
   tech: "tech",
   home: "home",
   appliances: "home",

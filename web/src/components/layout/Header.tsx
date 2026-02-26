@@ -27,7 +27,7 @@ export const Header = ({
         <div className="max-w-6xl mx-auto px-4 py-8">
           <div className="text-center">
             <h1 className="text-3xl md:text-4xl font-semibold text-white mb-2 tracking-tight">
-              GROCIFY
+              TROLL-E
             </h1>
             <p className="text-sm text-white/80 mb-6">
               Compare grocery prices across NZ
@@ -54,7 +54,7 @@ export const Header = ({
         <div className="flex items-center justify-between gap-6">
           {/* Logo - hugs left edge */}
           <Link to="/" className="flex-shrink-0">
-            <span className="text-lg font-semibold text-white">GROCIFY</span>
+            <span className="text-lg font-semibold text-white">TROLL-E</span>
           </Link>
 
           {/* Search - centered */}

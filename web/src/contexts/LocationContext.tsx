@@ -88,7 +88,7 @@ export const LocationProvider = ({ children }: { children: ReactNode }) => {
             newLocation.lon <= 179;
 
           if (!isInNZ) {
-            const errorMsg = 'Grocify is currently only available in New Zealand';
+            const errorMsg = 'Troll-E is currently only available in New Zealand';
             setError(errorMsg);
             setLoading(false);
             reject(new Error(errorMsg));
