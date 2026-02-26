@@ -1,8 +1,8 @@
 [tool.poetry]
-name = "grocify"
+name = "trolle"
 version = "0.1.0"
 description = "NZ grocery price comparison"
-authors = ["Grocify"]
+authors = ["Troll-E"]
 readme = "README.md"
 package-mode = false
 

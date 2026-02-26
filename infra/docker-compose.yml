@@ -3,7 +3,7 @@ services:
     image: postgis/postgis:15-3.4
     restart: always
     environment:
-      POSTGRES_DB: grocify
+      POSTGRES_DB: trolle
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
     ports:

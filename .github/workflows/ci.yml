@@ -1,0 +1,131 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  PYTHON_VERSION: "3.11"
+  NODE_VERSION: "20"
+
+jobs:
+  api-test:
+    name: API Tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: api
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install Poetry
+        run: pip install poetry==1.7.1
+
+      - name: Cache Poetry dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pypoetry
+          key: poetry-${{ runner.os }}-${{ hashFiles('poetry.lock') }}
+          restore-keys: poetry-${{ runner.os }}-
+
+      - name: Install dependencies
+        run: |
+          cd ..
+          poetry config virtualenvs.create false
+          poetry install --no-interaction --no-ansi
+
+      - name: Run tests
+        run: python -m pytest app/tests/ -v --tb=short
+        env:
+          SECRET_KEY: test-secret-key-that-is-at-least-32-chars-long
+          ADMIN_USERNAME: testadmin
+          ADMIN_PASSWORD: testpassword123
+          ENVIRONMENT: development
+          DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/trolle_test
+          REDIS_URL: redis://localhost:6379/0
+
+  api-lint:
+    name: API Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install Poetry
+        run: pip install poetry==1.7.1
+
+      - name: Install dependencies
+        run: |
+          poetry config virtualenvs.create false
+          poetry install --no-interaction --no-ansi
+
+      - name: Check import sorting
+        run: python -m isort --check-only --diff api/
+        continue-on-error: true
+
+  web-build:
+    name: Web Build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type check
+        run: npx tsc --noEmit
+
+      - name: Build
+        run: npm run build
+
+  dependency-audit:
+    name: Dependency Audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: NPM audit
+        run: cd web && npm audit --omit=dev
+        continue-on-error: true
+
+  docker-build:
+    name: Docker Build
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [api-test, web-build]
+    strategy:
+      matrix:
+        service:
+          - name: api
+            dockerfile: infra/dockerfiles/api.prod.Dockerfile
+          - name: web
+            dockerfile: infra/dockerfiles/web.prod.Dockerfile
+          - name: worker
+            dockerfile: infra/dockerfiles/worker.prod.Dockerfile
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build ${{ matrix.service.name }}
+        run: docker build -f ${{ matrix.service.dockerfile }} -t trolle-${{ matrix.service.name }}:${{ github.sha }} .

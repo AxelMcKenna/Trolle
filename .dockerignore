@@ -1,0 +1,32 @@
+.git
+.github
+.claude
+.vscode
+.idea
+
+# Environment files
+.env
+.env.*
+api/.env
+
+# Python
+__pycache__
+*.pyc
+.pytest_cache
+.coverage
+htmlcov
+.venv
+venv
+
+# Node
+web/node_modules
+web/dist
+web/test-results
+web/playwright-report
+
+# Misc
+*.log
+*.md
+*.bak
+*.tmp
+.DS_Store

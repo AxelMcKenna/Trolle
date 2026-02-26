@@ -1,4 +1,4 @@
-# Grocify
+# Troll-E
 
 ![Python](https://img.shields.io/badge/Python-3.11-3776AB?logo=python&logoColor=white)
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.110+-009688?logo=fastapi&logoColor=white)
@@ -8,7 +8,7 @@
 ![Redis](https://img.shields.io/badge/Redis-7-DC382D?logo=redis&logoColor=white)
 ![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&logoColor=white)
 
-Grocify is a location-aware grocery price comparison platform for New Zealand. It combines a FastAPI backend, scheduled scraping workers, and a React frontend to surface nearby deals across Countdown, PAK'nSAVE, and New World with trolley comparison and store ranking features.
+Troll-E is a location-aware grocery price comparison platform for New Zealand. It combines a FastAPI backend, scheduled scraping workers, and a React frontend to surface nearby deals across Countdown, PAK'nSAVE, and New World with trolley comparison and store ranking features.
 
 ## Table of Contents
 
