@@ -2,13 +2,12 @@
 from __future__ import annotations
 
 import re
-from datetime import datetime, time
+from datetime import datetime
 from typing import Optional
-
-import pytz
+from zoneinfo import ZoneInfo
 
 # NZ timezone for date parsing
-NZ_TZ = pytz.timezone("Pacific/Auckland")
+NZ_TZ = ZoneInfo("Pacific/Auckland")
 
 # Member-only keywords (case-insensitive)
 MEMBER_KEYWORDS = [
@@ -151,12 +150,6 @@ def parse_promo_end_date(text: str) -> Optional[datetime]:
     if not text:
         return None
 
-    try:
-        from dateutil import parser as date_parser
-    except ImportError:
-        # Fallback if dateutil not installed yet
-        return None
-
     # Common NZ date patterns
     # DD/MM/YYYY, DD/MM/YY
     pattern1 = r'(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})'
@@ -174,9 +167,15 @@ def parse_promo_end_date(text: str) -> Optional[datetime]:
         try:
             # End of day for end dates
             dt = datetime(year, month, day, 23, 59, 59)
-            return NZ_TZ.localize(dt)
+            return dt.replace(tzinfo=NZ_TZ)
         except ValueError:
             pass
+
+    try:
+        from dateutil import parser as date_parser
+    except ImportError:
+        # No flexible parser available beyond explicit regex formats.
+        return None
 
     # Try to extract just the date part for flexible parsing
     # Look for patterns like "Ends 25 Dec", "Until Monday 25/12", etc.
@@ -199,7 +198,7 @@ def parse_promo_end_date(text: str) -> Optional[datetime]:
 
                     # Add NZ timezone if naive
                     if dt.tzinfo is None:
-                        dt = NZ_TZ.localize(dt)
+                        dt = dt.replace(tzinfo=NZ_TZ)
 
                     return dt
                 except (ValueError, TypeError):
@@ -211,7 +210,7 @@ def parse_promo_end_date(text: str) -> Optional[datetime]:
         dt = dt.replace(hour=23, minute=59, second=59)
 
         if dt.tzinfo is None:
-            dt = NZ_TZ.localize(dt)
+            dt = dt.replace(tzinfo=NZ_TZ)
 
         return dt
     except (ValueError, TypeError):

@@ -9,7 +9,6 @@ from datetime import datetime
 from unittest.mock import patch
 
 import pytest
-import pytz
 
 from app.services.promo_utils import (
     parse_promo_price,

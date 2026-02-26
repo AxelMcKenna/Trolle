@@ -42,3 +42,6 @@ build-backend = "poetry.core.masonry.api"
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+markers = [
+  "integration: marks tests that exercise multi-component behavior",
+]
