@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from typing import Dict, List, Optional
+from uuid import UUID
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
@@ -234,7 +235,7 @@ async def list_ingestion_runs(
 
 
 @router.get("/runs/{run_id}", response_model=IngestionRunResponse)
-async def get_ingestion_run(run_id: str):
+async def get_ingestion_run(run_id: UUID):
     """
     Get details for a specific ingestion run.
 

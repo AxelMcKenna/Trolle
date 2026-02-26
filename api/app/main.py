@@ -87,7 +87,7 @@ async def validation_exception_handler(_: Request, exc: ValidationError) -> JSON
     """Handle Pydantic validation errors and return 422 with details."""
     return JSONResponse(
         status_code=422,
-        content={"detail": exc.errors()},
+        content={"detail": exc.errors(include_context=False, include_input=False)},
     )
 
 

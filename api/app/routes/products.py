@@ -64,7 +64,10 @@ async def _params(
             radius_km=radius_km,
         )
     except ValidationError as exc:
-        raise HTTPException(status_code=422, detail=exc.errors()) from exc
+        raise HTTPException(
+            status_code=422,
+            detail=exc.errors(include_context=False),
+        ) from exc
 
 
 @router.get("", response_model=ProductListResponse)
