@@ -1,5 +1,5 @@
 """
-Comprehensive test suite for Grocify scrapers.
+Comprehensive test suite for Troll-E scrapers.
 
 Tests cover:
 - Product parsing accuracy

@@ -2,8 +2,7 @@ from __future__ import annotations
 
 import functools
 import os
-from dataclasses import dataclass
-from typing import Any, Dict, Iterable, Optional
+from typing import Any, Dict, Iterable
 
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings
@@ -12,11 +11,11 @@ from pydantic_settings import BaseSettings
 class Settings(BaseSettings):
     """Application settings loaded from environment variables."""
 
-    app_name: str = "Grocify API"
+    app_name: str = "Troll-E API"
     environment: str = "development"
     secret_key: str = "changeme"
 
-    database_url: str = "postgresql+psycopg://postgres:postgres@db:5432/grocify"
+    database_url: str = "postgresql+psycopg://postgres:postgres@db:5432/trolle"
     redis_url: str = "redis://redis:6379/0"
 
     api_cache_ttl_seconds: int = 600
@@ -62,23 +61,31 @@ class Settings(BaseSettings):
 
         return v
 
+    admin_password_hash: str = ""
+
     @field_validator("admin_password")
     @classmethod
     def validate_admin_password(cls, v: str) -> str:
-        """Warn about weak admin passwords."""
-        if v in ["admin", "password", "changeme"]:
-            import warnings
-            warnings.warn(
-                "Using default admin password. Change this in production!",
-                UserWarning
-            )
+        """Reject weak admin passwords in production."""
+        env = os.environ.get("ENVIRONMENT", "development")
+        weak_defaults = ["admin", "password", "changeme"]
 
-        if len(v) < 8:
-            import warnings
-            warnings.warn(
-                f"Admin password is weak (length: {len(v)}). Use at least 12 characters.",
-                UserWarning
-            )
+        if env == "production":
+            if v in weak_defaults:
+                raise ValueError(
+                    "ADMIN_PASSWORD cannot be a default value in production."
+                )
+            if len(v) < 12:
+                raise ValueError(
+                    f"ADMIN_PASSWORD must be at least 12 characters in production (current: {len(v)})."
+                )
+        else:
+            if v in weak_defaults:
+                import warnings
+                warnings.warn(
+                    "Using default admin password. Change this in production!",
+                    UserWarning,
+                )
 
         return v
 

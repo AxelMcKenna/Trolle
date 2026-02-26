@@ -21,7 +21,7 @@ logger.setLevel(logging.INFO)
 logging.getLogger("sqlalchemy.engine").setLevel(logging.WARNING)
 
 NOMINATIM_URL = "https://nominatim.openstreetmap.org/search"
-HEADERS = {"User-Agent": "Grocify/1.0 (grocery price comparison; contact@grocify.co.nz)"}
+HEADERS = {"User-Agent": "Troll-E/1.0 (grocery price comparison; contact@troll-e.co.nz)"}
 
 CHAIN_SEARCH = {
     "countdown": "Woolworths",

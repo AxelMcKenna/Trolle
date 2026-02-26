@@ -4,7 +4,7 @@ from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy import text
 
 async def analyze():
-    engine = create_async_engine('postgresql+asyncpg://postgres:postgres@localhost:5432/grocify')
+    engine = create_async_engine('postgresql+asyncpg://postgres:postgres@localhost:5432/trolle')
 
     async with engine.begin() as conn:
         print('\n' + '='*80)

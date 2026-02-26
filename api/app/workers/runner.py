@@ -75,46 +75,66 @@ class WorkerScheduler:
         time_since_last_run = datetime.utcnow() - last_run
         return time_since_last_run >= timedelta(hours=SCRAPER_INTERVAL_HOURS)
 
-    async def run_all_scrapers(self, force: bool = False) -> None:
-        """Run all scrapers sequentially with delays."""
+    async def run_all_scrapers(self, force: bool = False, parallel: bool = False) -> None:
+        """Run all scrapers, either sequentially or in parallel."""
         logger.info(f"Checking {len(self.chains_to_run)} scrapers for scheduled runs")
 
+        chains_to_run = []
         for chain in self.chains_to_run:
             if force or await self.should_run_scraper(chain):
-                # Run scraper
-                task = asyncio.create_task(self.run_scraper(chain))
-                self.running_chains[chain] = task
-
-                # Wait for completion — catch failures so remaining chains still run
-                try:
-                    await task
-                except Exception as e:
-                    logger.error(f"Scraper failed for chain={chain}: {e}")
-
-                # Delay between scrapers to avoid overwhelming the system
-                logger.info(f"Waiting {SEQUENTIAL_DELAY_SECONDS}s before next scraper...")
-                await asyncio.sleep(SEQUENTIAL_DELAY_SECONDS)
+                chains_to_run.append(chain)
             else:
                 last_run = self.last_run.get(chain)
                 if last_run:
                     time_since = datetime.utcnow() - last_run
                     logger.info(f"Skipping {chain} (last run {time_since.total_seconds() / 3600:.1f}h ago)")
 
+        if not chains_to_run:
+            return
+
+        if parallel:
+            logger.info(f"Running {len(chains_to_run)} scrapers in PARALLEL: {', '.join(chains_to_run)}")
+            tasks = []
+            for chain in chains_to_run:
+                task = asyncio.create_task(self.run_scraper(chain))
+                self.running_chains[chain] = task
+                tasks.append(task)
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            for chain, result in zip(chains_to_run, results):
+                if isinstance(result, Exception):
+                    logger.error(f"Scraper failed for chain={chain}: {result}")
+        else:
+            for chain in chains_to_run:
+                task = asyncio.create_task(self.run_scraper(chain))
+                self.running_chains[chain] = task
+
+                try:
+                    await task
+                except Exception as e:
+                    logger.error(f"Scraper failed for chain={chain}: {e}")
+
+                logger.info(f"Waiting {SEQUENTIAL_DELAY_SECONDS}s before next scraper...")
+                await asyncio.sleep(SEQUENTIAL_DELAY_SECONDS)
+
 
 async def main(chains_to_run: Optional[List[str]] = None) -> None:
     """Main worker loop."""
+    # Parse flags from command line args
+    parallel = "--parallel" in sys.argv or os.environ.get("TROLLE_PARALLEL", "").lower() in ("1", "true")
+    args = [a for a in sys.argv[1:] if a != "--parallel"]
+
     # Parse chains from command line args or env var if not provided
     if chains_to_run is None:
         # Check environment variable
-        env_chains = os.environ.get("GROCIFY_CHAINS")
+        env_chains = os.environ.get("TROLLE_CHAINS")
         if env_chains:
             chains_to_run = [c.strip() for c in env_chains.split(",")]
         # Check command line args
-        elif len(sys.argv) > 1:
-            chains_to_run = sys.argv[1].split(",")
+        elif args:
+            chains_to_run = args[0].split(",")
 
     logger.info("=" * 60)
-    logger.info("Starting Grocify Worker")
+    logger.info("Starting Troll-E Worker")
     logger.info("=" * 60)
 
     if chains_to_run:
@@ -131,13 +151,14 @@ async def main(chains_to_run: Optional[List[str]] = None) -> None:
 
     logger.info(f"Interval: {SCRAPER_INTERVAL_HOURS}h")
     logger.info(f"Timeout: {SCRAPER_TIMEOUT_MINUTES}m")
+    logger.info(f"Parallel: {parallel}")
     logger.info("=" * 60)
 
     scheduler = WorkerScheduler(chains_to_run=chains_to_run)
 
     # Run all scrapers once at startup
     logger.info("Running initial scraper pass...")
-    await scheduler.run_all_scrapers(force=True)
+    await scheduler.run_all_scrapers(force=True, parallel=parallel)
 
     # Then run on schedule
     while True:
@@ -145,7 +166,7 @@ async def main(chains_to_run: Optional[List[str]] = None) -> None:
         await asyncio.sleep(3600)  # Check every hour
 
         logger.info("Checking for scheduled scraper runs...")
-        await scheduler.run_all_scrapers()
+        await scheduler.run_all_scrapers(parallel=parallel)
 
         # Periodic promo expiry cleanup (lightweight, runs every cycle)
         try:

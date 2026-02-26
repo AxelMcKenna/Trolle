@@ -6,6 +6,7 @@ import warnings
 from unittest.mock import patch
 
 import pytest
+from pydantic import ValidationError
 
 from app.core.config import Settings
 
@@ -58,15 +59,22 @@ class TestAdminPasswordValidation:
             assert len(w) >= 1
             assert "default admin password" in str(w[0].message).lower()
 
-    def test_admin_password_warns_on_weak_length(self):
-        """Admin password should warn if too short."""
-        with warnings.catch_warnings(record=True) as w:
-            warnings.simplefilter("always")
-            Settings(
-                secret_key="valid-secret-key-that-is-long-enough-123",
-                admin_password="short"
-            )
-            assert any("weak" in str(warning.message).lower() for warning in w)
+    def test_admin_password_rejects_short_in_production(self):
+        """Admin password should reject short passwords in production."""
+        import os
+        original = os.environ.get("ENVIRONMENT")
+        os.environ["ENVIRONMENT"] = "production"
+        try:
+            with pytest.raises(ValidationError):
+                Settings(
+                    secret_key="valid-secret-key-that-is-long-enough-123",
+                    admin_password="short"
+                )
+        finally:
+            if original is None:
+                os.environ.pop("ENVIRONMENT", None)
+            else:
+                os.environ["ENVIRONMENT"] = original
 
     def test_admin_password_no_warn_on_strong(self):
         """Admin password should not warn on strong passwords."""
@@ -150,11 +158,11 @@ class TestSettingsDefaults:
         assert settings.environment == "development"
 
     def test_default_app_name(self):
-        """Default app name should be Grocify API."""
+        """Default app name should be Troll-E API."""
         settings = Settings(
             secret_key="valid-secret-key-that-is-long-enough-123"
         )
-        assert settings.app_name == "Grocify API"
+        assert settings.app_name == "Troll-E API"
 
     def test_default_radius(self):
         """Default radius should be 2km."""

@@ -32,7 +32,7 @@ class StoreLocationScraper(abc.ABC):
 
         # Set respectful User-Agent
         self.client.headers.update({
-            "User-Agent": "Grocify/1.0 (Store Location Service; +https://grocify.co.nz)"
+            "User-Agent": "Troll-E/1.0 (Store Location Service; +https://troll-e.co.nz)"
         })
 
     async def __aenter__(self):
@@ -41,7 +41,7 @@ class StoreLocationScraper(abc.ABC):
             self.playwright = await async_playwright().start()
             self.browser = await self.playwright.chromium.launch(headless=True)
             self.context = await self.browser.new_context(
-                user_agent="Grocify/1.0 (Store Location Service; +https://grocify.co.nz)",
+                user_agent="Troll-E/1.0 (Store Location Service; +https://troll-e.co.nz)",
                 viewport={"width": 1920, "height": 1080},
             )
         return self

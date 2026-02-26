@@ -1,4 +1,4 @@
-"""Test fixtures and configuration for Grocify API tests."""
+"""Test fixtures and configuration for Troll-E API tests."""
 from __future__ import annotations
 
 import asyncio
@@ -19,7 +19,7 @@ def pytest_configure(config):
     os.environ["ADMIN_USERNAME"] = "testadmin"
     os.environ["ADMIN_PASSWORD"] = "testpassword123"
     os.environ["ENVIRONMENT"] = "development"
-    os.environ["DATABASE_URL"] = "postgresql+psycopg://postgres:postgres@localhost:5432/grocify_test"
+    os.environ["DATABASE_URL"] = "postgresql+psycopg://postgres:postgres@localhost:5432/trolle_test"
     os.environ["REDIS_URL"] = "redis://localhost:6379/0"
     os.environ["CORS_ORIGINS"] = "http://localhost:5173"
 

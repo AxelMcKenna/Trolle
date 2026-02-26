@@ -75,6 +75,10 @@ def create_token_with_credentials(username: str, password: str) -> str:
     """
     Verify credentials and create a JWT token if valid.
 
+    Supports both bcrypt-hashed passwords (via ADMIN_PASSWORD_HASH env var)
+    and plaintext passwords (via ADMIN_PASSWORD) for backwards compatibility
+    during migration.
+
     Args:
         username: Username to verify
         password: Plain text password to verify
@@ -85,12 +89,23 @@ def create_token_with_credentials(username: str, password: str) -> str:
     Raises:
         HTTPException: If credentials are invalid
     """
-    # For now, we're still using plaintext comparison for backwards compatibility
-    # TODO: Once admin password is hashed in database, switch to verify_password()
-    if username != settings.admin_username or password != settings.admin_password:
+    if username != settings.admin_username:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid credentials"
+            detail="Invalid credentials",
+        )
+
+    # Prefer hashed password if set, fall back to plaintext comparison
+    if settings.admin_password_hash:
+        if not verify_password(password, settings.admin_password_hash):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid credentials",
+            )
+    elif password != settings.admin_password:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid credentials",
         )
 
     return create_admin_token()

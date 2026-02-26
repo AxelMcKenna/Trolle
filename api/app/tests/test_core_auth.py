@@ -104,6 +104,40 @@ class TestTokenCreation:
         assert isinstance(token, str)
         assert len(token) > 0
 
+    def test_create_token_with_hashed_password(self):
+        """create_token_with_credentials should verify against bcrypt hash."""
+        from app.core.config import get_settings
+        settings = get_settings()
+
+        hashed = hash_password(settings.admin_password)
+        original_hash = settings.admin_password_hash
+        try:
+            settings.admin_password_hash = hashed
+            token = create_token_with_credentials(
+                settings.admin_username,
+                settings.admin_password,
+            )
+            assert isinstance(token, str)
+            assert len(token) > 0
+        finally:
+            settings.admin_password_hash = original_hash
+
+    def test_create_token_with_wrong_password_hashed(self):
+        """create_token_with_credentials should reject wrong password when hash is set."""
+        from fastapi import HTTPException
+        from app.core.config import get_settings
+        settings = get_settings()
+
+        hashed = hash_password("correct_password")
+        original_hash = settings.admin_password_hash
+        try:
+            settings.admin_password_hash = hashed
+            with pytest.raises(HTTPException) as exc_info:
+                create_token_with_credentials(settings.admin_username, "wrong_password")
+            assert exc_info.value.status_code == 401
+        finally:
+            settings.admin_password_hash = original_hash
+
     def test_create_token_with_invalid_username(self):
         """create_token_with_credentials should reject invalid username."""
         from fastapi import HTTPException

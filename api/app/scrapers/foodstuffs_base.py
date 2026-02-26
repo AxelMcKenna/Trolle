@@ -7,6 +7,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import time
 from datetime import datetime
 from pathlib import Path
 from typing import List, Optional
@@ -202,12 +203,17 @@ class FoodstuffsAPIScraper(Scraper, APIAuthBase):
         ("Easter", "Easter"): ("Snacks & Confectionery", "Chocolate"),
     }
 
+    # Refresh token 5 minutes before expiry (token lasts 30 min / 1800s)
+    TOKEN_TTL_SECONDS = 1800
+    TOKEN_REFRESH_BUFFER_SECONDS = 300  # refresh 5 min early
+
     def __init__(self, scrape_all_stores: bool = True):
         Scraper.__init__(self)
         APIAuthBase.__init__(self)
         self.store_id: str = self.default_store_id
         self.scrape_all_stores = scrape_all_stores
         self.store_list = self._load_store_list() if scrape_all_stores else []
+        self._token_obtained_at: float = 0
 
     async def _load_store_list_from_db(self) -> List[dict]:
         """Load store API IDs for this chain from database (source of truth)."""
@@ -589,6 +595,32 @@ class FoodstuffsAPIScraper(Scraper, APIAuthBase):
                 run.finished_at = datetime.utcnow()
             raise
 
+    def _token_age_seconds(self) -> float:
+        """How many seconds since the current token was obtained."""
+        if self._token_obtained_at == 0:
+            return float("inf")
+        return time.monotonic() - self._token_obtained_at
+
+    def _token_needs_refresh(self) -> bool:
+        """True if the token is close to expiry and should be refreshed."""
+        return self._token_age_seconds() >= (self.TOKEN_TTL_SECONDS - self.TOKEN_REFRESH_BUFFER_SECONDS)
+
+    async def _refresh_token_if_needed(self) -> bool:
+        """Refresh the auth token if it's close to expiry. Returns True if token is valid."""
+        if not self._token_needs_refresh():
+            return True
+
+        age = self._token_age_seconds()
+        logger.info(f"{self.chain}: token is {age:.0f}s old (limit {self.TOKEN_TTL_SECONDS}s), refreshing...")
+        self.auth_token = await self._get_auth_token()
+        if self.auth_token:
+            self._token_obtained_at = time.monotonic()
+            logger.info(f"{self.chain}: token refreshed successfully")
+            return True
+
+        logger.error(f"{self.chain}: token refresh failed")
+        return False
+
     async def _validate_auth(self) -> bool:
         """Validate that the auth token is still valid by making a lightweight API call."""
         if not self.categories:
@@ -613,6 +645,7 @@ class FoodstuffsAPIScraper(Scraper, APIAuthBase):
                     "both direct HTTP and browser token capture failed"
                 )
                 return []
+            self._token_obtained_at = time.monotonic()
 
         # Validate auth before full scrape
         if not await self._validate_auth():
@@ -621,6 +654,7 @@ class FoodstuffsAPIScraper(Scraper, APIAuthBase):
             if not self.auth_token or not await self._validate_auth():
                 logger.error(f"{self.chain}: auth validation failed after refresh")
                 return []
+            self._token_obtained_at = time.monotonic()
 
         all_products: List[dict] = []
 
@@ -645,6 +679,11 @@ class FoodstuffsAPIScraper(Scraper, APIAuthBase):
         for store_idx, store in enumerate(stores_to_scrape, 1):
             store_id = store["id"]
             store_name = store.get("name", store_id)
+
+            # Proactively refresh token before it expires
+            if not await self._refresh_token_if_needed():
+                logger.error(f"{self.chain}: cannot continue without valid token, stopping at store {store_idx}")
+                break
 
             logger.info(f"[{store_idx}/{len(stores_to_scrape)}] Scraping store: {store_name}")
             self.store_id = store_id

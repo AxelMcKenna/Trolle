@@ -8,7 +8,7 @@ Usage:
     python -m app.store_scrapers.runner countdown
 
     # Or via env var
-    GROCIFY_STORE_CHAINS=countdown python -m app.store_scrapers.runner
+    TROLLE_STORE_CHAINS=countdown python -m app.store_scrapers.runner
 """
 from __future__ import annotations
 
@@ -227,7 +227,7 @@ if __name__ == "__main__":
     if len(sys.argv) > 1:
         raw = sys.argv[1]
     else:
-        raw = os.environ.get("GROCIFY_STORE_CHAINS")
+        raw = os.environ.get("TROLLE_STORE_CHAINS")
 
     target_chains = [c.strip() for c in raw.split(",") if c.strip()] if raw else None
     asyncio.run(main(target_chains))
