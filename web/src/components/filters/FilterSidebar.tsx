@@ -95,7 +95,7 @@ export const FilterSidebar = ({ isOpen, onClose }: FilterSidebarProps) => {
                 </label>
               </div>
               <SortDropdown
-                value={filters.sort || SortOption.BEST_VALUE}
+                value={filters.sort || SortOption.CHEAPEST}
                 onChange={(sort) => updateFilters({ sort })}
               />
             </div>

@@ -10,11 +10,11 @@ const App = () => {
   const { products, loading, error, fetchProducts } = useProducts();
 
   useEffect(() => {
-    fetchProducts("", "");
+    fetchProducts({ query: "" });
   }, [fetchProducts]);
 
   const handleSearch = () => {
-    fetchProducts(query, "");
+    fetchProducts({ query });
   };
 
   return (
