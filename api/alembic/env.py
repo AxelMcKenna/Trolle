@@ -14,7 +14,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 # Import the Base and models to get metadata
 from app.db.base import Base
-from app.db.models import Store, Product, Price, IngestionRun  # noqa: F401
+from app.db.models import Store, Product, Price, IngestionRun, Recipe, RecipeIngredient, UserProfile, SavedTrolley, SavedRecipe  # noqa: F401
 from app.core.config import get_settings
 
 # this is the Alembic Config object, which provides
