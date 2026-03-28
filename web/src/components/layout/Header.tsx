@@ -9,18 +9,23 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 
 interface HeaderProps {
-  query: string;
-  setQuery: (query: string) => void;
-  onSearch: () => void;
+  query?: string;
+  setQuery?: (query: string) => void;
+  onSearch?: () => void;
   variant?: 'compact' | 'landing';
+  showSearch?: boolean;
 }
 
 export const Header = ({
-  query,
-  setQuery,
-  onSearch,
+  query: externalQuery,
+  setQuery: externalSetQuery,
+  onSearch: externalOnSearch,
   variant = 'compact',
+  showSearch = true,
 }: HeaderProps) => {
+  const [internalQuery, setInternalQuery] = useState('');
+  const query = externalQuery ?? internalQuery;
+  const setQuery = externalSetQuery ?? setInternalQuery;
   const { radiusKm, isLocationSet, openLocationModal } = useLocationContext();
   const { itemCount } = useTrolleyContext();
   const { isAuthenticated, user, displayName, signOut } = useAuth();
@@ -43,7 +48,11 @@ export const Header = ({
 
   const handleSearchSubmit = () => {
     if (query.trim()) addSearch(query.trim());
-    onSearch();
+    if (externalOnSearch) {
+      externalOnSearch();
+    } else {
+      navigate(`/explore?q=${encodeURIComponent(query.trim())}`);
+    }
     setSearchFocused(false);
   };
 
@@ -95,7 +104,7 @@ export const Header = ({
           </Link>
 
           {/* Search - centered */}
-          <div className="flex-1 flex justify-center">
+          {showSearch && <div className="flex-1 flex justify-center">
             <div ref={searchContainerRef} className="relative w-full max-w-md">
               <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" aria-hidden="true" />
               <Input
@@ -107,33 +116,47 @@ export const Header = ({
                 onFocus={() => setSearchFocused(true)}
                 className="pl-10 h-10 bg-white text-sm"
               />
-              {/* Recent searches dropdown */}
-              {searchFocused && !query && recentSearches.length > 0 && (
-                <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-white border rounded-lg shadow-lg overflow-hidden">
-                  <div className="flex items-center justify-between px-3 py-2 border-b">
-                    <span className="text-xs font-medium text-muted-foreground">Recent searches</span>
-                    <button onClick={clearHistory} className="text-xs text-muted-foreground hover:text-foreground">
-                      Clear
-                    </button>
+              {/* Recent searches dropdown — shows all when empty, filtered while typing */}
+              {searchFocused && recentSearches.length > 0 && (() => {
+                const filtered = query
+                  ? recentSearches.filter((s) => s.toLowerCase().includes(query.toLowerCase()) && s.toLowerCase() !== query.toLowerCase())
+                  : recentSearches;
+                if (filtered.length === 0) return null;
+                return (
+                  <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-white border rounded-lg shadow-lg overflow-hidden">
+                    <div className="flex items-center justify-between px-3 py-2 border-b">
+                      <span className="text-xs font-medium text-muted-foreground">Recent searches</span>
+                      <button onClick={clearHistory} className="text-xs text-muted-foreground hover:text-foreground">
+                        Clear
+                      </button>
+                    </div>
+                    {filtered.map((s) => (
+                      <button
+                        key={s}
+                        className="w-full flex items-center gap-2 px-3 py-2 text-sm text-left hover:bg-secondary/50 transition-colors"
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          setQuery(s);
+                          addSearch(s);
+                          setSearchFocused(false);
+                          if (externalOnSearch) {
+                            // Defer so query state propagates before search fires
+                            setTimeout(() => externalOnSearch(), 0);
+                          } else {
+                            navigate(`/explore?q=${encodeURIComponent(s)}`);
+                          }
+                        }}
+                      >
+                        <Clock className="h-3 w-3 text-muted-foreground flex-shrink-0" />
+                        <span className="truncate">{s}</span>
+                      </button>
+                    ))}
                   </div>
-                  {recentSearches.map((s) => (
-                    <button
-                      key={s}
-                      className="w-full flex items-center gap-2 px-3 py-2 text-sm text-left hover:bg-secondary/50 transition-colors"
-                      onClick={() => {
-                        setQuery(s);
-                        setSearchFocused(false);
-                        onSearch();
-                      }}
-                    >
-                      <Clock className="h-3 w-3 text-muted-foreground flex-shrink-0" />
-                      <span className="truncate">{s}</span>
-                    </button>
-                  ))}
-                </div>
-              )}
+                );
+              })()}
             </div>
-          </div>
+          </div>}
+          {!showSearch && <div className="flex-1" />}
 
           {/* Right actions */}
           <div className="flex items-center gap-1 flex-shrink-0">

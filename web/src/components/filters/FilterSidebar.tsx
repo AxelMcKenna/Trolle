@@ -15,12 +15,8 @@ interface FilterSidebarProps {
 export const FilterSidebar = ({ isOpen, onClose }: FilterSidebarProps) => {
   const { filters, updateFilters, clearFilters, activeFilterCount } = useFilters();
 
-  // Auto-close on mobile after filter change
   const handleFilterChange = (updates: Parameters<typeof updateFilters>[0]) => {
     updateFilters(updates);
-    if (window.innerWidth < 1024) {
-      setTimeout(onClose, 200);
-    }
   };
 
   return (
@@ -77,7 +73,7 @@ export const FilterSidebar = ({ isOpen, onClose }: FilterSidebarProps) => {
           </div>
 
           {/* Scrollable filters */}
-          <div className="flex-1 overflow-y-auto px-6 py-4 space-y-8">
+          <div className="flex-1 overflow-y-auto px-6 py-4 space-y-8 pb-20 lg:pb-4">
             {/* Deals & Promos */}
             <div>
               <div className="flex items-center gap-2 mb-4">
@@ -126,6 +122,13 @@ export const FilterSidebar = ({ isOpen, onClose }: FilterSidebarProps) => {
                 onChange={(chains) => handleFilterChange({ chains })}
               />
             </div>
+          </div>
+
+          {/* Mobile done button */}
+          <div className="lg:hidden border-t border-border/40 p-4 bg-white">
+            <Button onClick={onClose} className="w-full">
+              Show Results
+            </Button>
           </div>
         </div>
       </aside>

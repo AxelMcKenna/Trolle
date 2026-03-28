@@ -1,5 +1,6 @@
 import { memo, useState } from "react";
-import { Store, Clock, ShoppingCart, MapPin, Eye, Check } from "lucide-react";
+import { Store, Clock, ShoppingCart, MapPin, Eye, Check, Plus, Minus, Trash2 } from "lucide-react";
+import { toast } from "sonner";
 import { Product } from "@/types";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -26,7 +27,7 @@ const ProductCardComponent = ({
 }: ProductCardProps) => {
   const [imageError, setImageError] = useState(false);
   const [showQuickView, setShowQuickView] = useState(false);
-  const { addItem, removeItem, isInTrolley, getItemQuantity } = useTrolleyContext();
+  const { addItem, removeItem, updateQuantity, isInTrolley, getItemQuantity } = useTrolleyContext();
   const inTrolley = isInTrolley(product.id);
   const trolleyQty = getItemQuantity(product.id);
   const hasPromo = product.price.promo_price_nzd &&
@@ -163,32 +164,58 @@ const ProductCardComponent = ({
           {/* Spacer pushes button to bottom */}
           <div className="flex-1" />
 
-          {/* Add to Trolley */}
-          <Button
-            variant={inTrolley ? "secondary" : "outline"}
-            size="sm"
-            className="w-full mt-3 text-xs"
-            onClick={(e) => {
-              e.stopPropagation();
-              if (inTrolley) {
-                removeItem(product.id);
-              } else {
+          {/* Add to Trolley / Quantity controls */}
+          {inTrolley ? (
+            <div className="flex items-center justify-between mt-3 gap-2">
+              <div className="flex items-center gap-0.5">
+                <button
+                  className="h-7 w-7 rounded-md flex items-center justify-center hover:bg-muted text-muted-foreground transition-colors touch-manipulation"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (trolleyQty <= 1) {
+                      removeItem(product.id);
+                      toast('Removed from trolley', { duration: 2000 });
+                    } else {
+                      updateQuantity(product.id, trolleyQty - 1);
+                    }
+                  }}
+                  aria-label={trolleyQty <= 1 ? "Remove from trolley" : "Decrease quantity"}
+                >
+                  {trolleyQty <= 1 ? <Trash2 className="h-3 w-3" /> : <Minus className="h-3 w-3" />}
+                </button>
+                <span className="text-xs font-medium w-6 text-center">{trolleyQty}</span>
+                <button
+                  className="h-7 w-7 rounded-md flex items-center justify-center hover:bg-muted text-muted-foreground transition-colors touch-manipulation"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    updateQuantity(product.id, trolleyQty + 1);
+                  }}
+                  disabled={trolleyQty >= 99}
+                  aria-label="Increase quantity"
+                >
+                  <Plus className="h-3 w-3" />
+                </button>
+              </div>
+              <span className="flex items-center gap-1 text-xs text-primary font-medium">
+                <Check className="h-3 w-3" />
+                In Trolley
+              </span>
+            </div>
+          ) : (
+            <Button
+              variant="outline"
+              size="sm"
+              className="w-full mt-3 text-xs"
+              onClick={(e) => {
+                e.stopPropagation();
                 addItem(product);
-              }
-            }}
-          >
-            {inTrolley ? (
-              <>
-                <Check className="h-3 w-3 mr-1" />
-                In Trolley{trolleyQty > 1 ? ` (x${trolleyQty})` : ''}
-              </>
-            ) : (
-              <>
-                <ShoppingCart className="h-3 w-3 mr-1" />
-                Add to Trolley
-              </>
-            )}
-          </Button>
+                toast.success(`Added to trolley`, { duration: 2000 });
+              }}
+            >
+              <ShoppingCart className="h-3 w-3 mr-1" />
+              Add to Trolley
+            </Button>
+          )}
         </CardContent>
       </Card>
 
@@ -201,9 +228,4 @@ const ProductCardComponent = ({
   );
 };
 
-export const ProductCard = memo(ProductCardComponent, (prevProps, nextProps) => {
-  return (
-    prevProps.product.id === nextProps.product.id &&
-    prevProps.index === nextProps.index
-  );
-});
+export const ProductCard = memo(ProductCardComponent);

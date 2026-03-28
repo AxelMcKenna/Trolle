@@ -11,7 +11,8 @@ import { useProducts } from '@/hooks/useProducts';
 import { useLocationContext } from '@/contexts/LocationContext';
 import { useStores } from '@/hooks/useStores';
 import { useAuth } from '@/contexts/AuthContext';
-import { Search, ArrowRight, MapPin, ShoppingCart, UtensilsCrossed, User, LogOut } from 'lucide-react';
+import { Search, ArrowRight, MapPin, ShoppingCart, UtensilsCrossed, User, LogOut, Navigation } from 'lucide-react';
+import { useTrolleyContext } from '@/contexts/TrolleyContext';
 import { SortOption } from '@/types';
 import { api } from '@/lib/api';
 import { useIntersectionObserver } from '@/hooks/useIntersectionObserver';
@@ -67,6 +68,7 @@ export const Landing = () => {
   } = useLocationContext();
   const { stores, loading: storesLoading, fetchNearbyStores } = useStores();
   const { isAuthenticated, user, displayName, signOut } = useAuth();
+  const { itemCount } = useTrolleyContext();
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [tempRadius, setTempRadius] = useState(radiusKm);
   const [shouldLoadMap, setShouldLoadMap] = useState(false);
@@ -168,6 +170,17 @@ export const Landing = () => {
             <Link to="/" className="text-xl font-semibold text-white tracking-tight font-serif">
               TROLL-E
             </Link>
+            <div className="flex items-center gap-1">
+              <Link to="/trolley">
+                <Button variant="ghost" size="sm" className="text-white hover:bg-white/10 relative border-0">
+                  <ShoppingCart className="h-4 w-4" />
+                  {itemCount > 0 && (
+                    <span className="absolute -top-1 -right-1 bg-white text-primary text-[10px] font-bold rounded-full h-4 min-w-[16px] flex items-center justify-center px-0.5">
+                      {itemCount}
+                    </span>
+                  )}
+                </Button>
+              </Link>
             {isAuthenticated ? (
               <div className="relative">
                 <Button
@@ -213,6 +226,7 @@ export const Landing = () => {
                 </Button>
               </Link>
             )}
+            </div>
           </div>
 
           {/* Hero content — 7/5 asymmetric split */}
@@ -250,6 +264,18 @@ export const Landing = () => {
                   Search
                 </Button>
               </div>
+
+              {/* Location prompt — early, visible, non-blocking */}
+              {!location && (
+                <button
+                  onClick={requestLocation}
+                  disabled={locationLoading}
+                  className="flex items-center gap-2 mt-5 text-[13px] font-sans text-white/60 hover:text-white/90 transition-colors group"
+                >
+                  <Navigation className="h-3.5 w-3.5 group-hover:text-[hsl(var(--gold))] transition-colors" />
+                  {locationLoading ? 'Getting location...' : 'Enable location for nearby prices'}
+                </button>
+              )}
 
               {/* Stat pills — below search */}
               <div className="flex items-center gap-5 text-[11px] font-sans text-white/40 tracking-wide mt-5">
@@ -500,10 +526,15 @@ export const Landing = () => {
         </div>
       </section>
 
+      {/* Divider */}
+      <div className="max-w-7xl mx-auto px-4">
+        <hr className="border-border" />
+      </div>
+
       {/* ============================================================ */}
       {/*  BOTTOM CTA — left-heavy with diagonal accent                 */}
       {/* ============================================================ */}
-      <section className="pb-16 md:pb-24">
+      <section className="pt-16 pb-16 md:pt-24 md:pb-24">
         <div className="max-w-7xl mx-auto px-4">
           <Reveal>
             <div className="bg-primary rounded-2xl overflow-hidden relative hero-grain">

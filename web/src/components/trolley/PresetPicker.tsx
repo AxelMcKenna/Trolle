@@ -28,12 +28,14 @@ interface BatchResolveResponse {
 
 export const PresetPicker = () => {
   const { addItems } = useTrolleyContext();
-  const { location, radiusKm, isLocationSet } = useLocationContext();
+  const { location, radiusKm, isLocationSet, openLocationModal } = useLocationContext();
   const [loadingId, setLoadingId] = useState<string | null>(null);
 
   const handleLoad = async (preset: PresetTrolley) => {
     if (!location || !isLocationSet) {
-      toast.error("Set your location first to load a preset trolley");
+      toast("Enable location to load presets", {
+        action: { label: "Set Location", onClick: openLocationModal },
+      });
       return;
     }
 
