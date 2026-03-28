@@ -65,6 +65,8 @@ services:
       DATABASE_URL: ${DATABASE_URL}
       REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
       SECRET_KEY: ${SECRET_KEY}
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD}
       ENVIRONMENT: production
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       PLAYWRIGHT_BROWSERS_PATH: /ms-playwright

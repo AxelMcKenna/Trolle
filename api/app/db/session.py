@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ssl
 from contextlib import asynccontextmanager, contextmanager
 from typing import Any, AsyncIterator, Iterator
 
@@ -46,9 +47,17 @@ def _adapt_urls(raw_url: str) -> tuple[URL, URL, dict[str, Any], dict[str, Any]]
         async_connect_args: dict[str, Any] = {}
         sync_connect_args: dict[str, Any] = {}
 
-        # Supabase (and many managed Postgres) require SSL. asyncpg needs ssl=True.
+        # Supabase (and many managed Postgres) require SSL.
+        # sslmode=require: encrypt but don't verify certs (matches Postgres semantics).
+        # sslmode=verify-ca/verify-full: encrypt and verify.
         if sslmode and sslmode.lower() in {"require", "verify-ca", "verify-full"}:
-            async_connect_args["ssl"] = True
+            if sslmode.lower() == "require":
+                ctx = ssl.create_default_context()
+                ctx.check_hostname = False
+                ctx.verify_mode = ssl.CERT_NONE
+                async_connect_args["ssl"] = ctx
+            else:
+                async_connect_args["ssl"] = True
 
         # PgBouncer/Supavisor transaction pooling: disable prepared statements.
         if _is_truthy(pgbouncer):
