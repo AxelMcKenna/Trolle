@@ -575,54 +575,55 @@ export const Landing = () => {
           <div className="grid grid-cols-1 md:grid-cols-12 gap-5">
             {/* Feature 1 — wide card */}
             <Reveal className="col-span-12 md:col-span-7" direction="left">
-              <div className="relative bg-primary rounded-2xl p-8 md:p-10 min-h-[220px] overflow-hidden group hero-grain">
-                <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_15%_25%,rgba(255,255,255,0.08),transparent_50%)]" />
-                <div className="absolute -bottom-12 -right-12 w-48 h-48 rounded-full bg-white/[0.04]" />
-                <div className="absolute top-8 right-8 w-20 h-20 rounded-full border border-white/[0.06]" />
+              <div className="relative bg-card border rounded-2xl p-8 md:p-10 min-h-[220px] overflow-hidden group">
+                <div className="absolute -bottom-12 -right-12 w-48 h-48 rounded-full bg-primary/[0.03]" />
+                <div className="absolute top-8 right-8 w-20 h-20 rounded-full border border-primary/[0.06]" />
                 <div className="relative z-10">
-                  <div className="w-11 h-11 rounded-lg bg-white/15 flex items-center justify-center mb-5">
-                    <Scale className="h-5 w-5 text-white" />
+                  <div className="w-11 h-11 rounded-lg bg-primary/10 flex items-center justify-center mb-5">
+                    <Scale className="h-5 w-5 text-primary" />
                   </div>
-                  <h3 className="text-xl md:text-2xl text-white mb-2 leading-tight">
+                  <h3 className="text-xl md:text-2xl text-foreground mb-2 leading-tight">
                     Real-time price comparison
                   </h3>
-                  <p className="text-white/55 text-sm md:text-[15px] max-w-md leading-relaxed font-sans">
+                  <p className="text-muted-foreground text-sm md:text-[15px] max-w-md leading-relaxed font-sans">
                     See the same product priced across Countdown, New World, and PAK'nSAVE side-by-side. Know exactly where to shop before you leave the house.
                   </p>
                 </div>
               </div>
             </Reveal>
 
-            {/* Feature 2 — narrow card */}
+            {/* Feature 2 — narrow card, blue */}
             <Reveal className="col-span-12 md:col-span-5" direction="right" delay={0.08}>
-              <div className="relative bg-card border rounded-2xl p-8 md:p-10 min-h-[220px] overflow-hidden group">
-                <div className="absolute -top-8 -left-8 w-32 h-32 rounded-full bg-[hsl(var(--gold))]/[0.04]" />
+              <div className="relative bg-primary rounded-2xl p-8 md:p-10 min-h-[220px] overflow-hidden group hero-grain">
+                <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_15%_25%,rgba(255,255,255,0.08),transparent_50%)]" />
+                <div className="absolute -top-8 -left-8 w-32 h-32 rounded-full bg-white/[0.04]" />
                 <div className="relative z-10">
-                  <div className="w-11 h-11 rounded-lg bg-[hsl(var(--gold))]/15 flex items-center justify-center mb-5">
-                    <Tag className="h-5 w-5 text-[hsl(var(--gold))]" />
+                  <div className="w-11 h-11 rounded-lg bg-white/15 flex items-center justify-center mb-5">
+                    <Tag className="h-5 w-5 text-white" />
                   </div>
-                  <h3 className="text-xl md:text-2xl text-foreground mb-2 leading-tight">
+                  <h3 className="text-xl md:text-2xl text-white mb-2 leading-tight">
                     Specials & promos
                   </h3>
-                  <p className="text-muted-foreground text-sm md:text-[15px] max-w-xs leading-relaxed font-sans">
+                  <p className="text-white/55 text-sm md:text-[15px] max-w-xs leading-relaxed font-sans">
                     Every current promotion surfaced automatically. Filter by discount percentage to find the biggest savings.
                   </p>
                 </div>
               </div>
             </Reveal>
 
-            {/* Feature 3 — narrow card */}
+            {/* Feature 3 — narrow card, blue */}
             <Reveal className="col-span-12 md:col-span-5" direction="left" delay={0.04}>
-              <div className="relative bg-card border rounded-2xl p-8 md:p-10 min-h-[220px] overflow-hidden group">
-                <div className="absolute -bottom-8 -right-8 w-32 h-32 rounded-full bg-primary/[0.03]" />
+              <div className="relative bg-primary rounded-2xl p-8 md:p-10 min-h-[220px] overflow-hidden group hero-grain">
+                <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_85%_75%,rgba(0,0,0,0.15),transparent_50%)]" />
+                <div className="absolute -bottom-8 -right-8 w-32 h-32 rounded-full bg-white/[0.04]" />
                 <div className="relative z-10">
-                  <div className="w-11 h-11 rounded-lg bg-primary/10 flex items-center justify-center mb-5">
-                    <BarChart3 className="h-5 w-5 text-primary" />
+                  <div className="w-11 h-11 rounded-lg bg-white/15 flex items-center justify-center mb-5">
+                    <BarChart3 className="h-5 w-5 text-white" />
                   </div>
-                  <h3 className="text-xl md:text-2xl text-foreground mb-2 leading-tight">
+                  <h3 className="text-xl md:text-2xl text-white mb-2 leading-tight">
                     Price history
                   </h3>
-                  <p className="text-muted-foreground text-sm md:text-[15px] max-w-xs leading-relaxed font-sans">
+                  <p className="text-white/55 text-sm md:text-[15px] max-w-xs leading-relaxed font-sans">
                     Track how prices change over time. Know if a "special" is really a deal or just back to normal.
                   </p>
                 </div>
@@ -631,18 +632,17 @@ export const Landing = () => {
 
             {/* Feature 4 — wide card */}
             <Reveal className="col-span-12 md:col-span-7" direction="right" delay={0.12}>
-              <div className="relative bg-primary rounded-2xl p-8 md:p-10 min-h-[220px] overflow-hidden group hero-grain">
-                <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_85%_75%,rgba(0,0,0,0.15),transparent_50%)]" />
-                <div className="absolute -top-10 -right-10 w-40 h-40 rounded-full bg-white/[0.04]" />
-                <div className="absolute bottom-6 right-6 w-16 h-16 rounded-full border border-white/[0.06]" />
+              <div className="relative bg-card border rounded-2xl p-8 md:p-10 min-h-[220px] overflow-hidden group">
+                <div className="absolute -top-10 -right-10 w-40 h-40 rounded-full bg-primary/[0.03]" />
+                <div className="absolute bottom-6 right-6 w-16 h-16 rounded-full border border-primary/[0.06]" />
                 <div className="relative z-10">
-                  <div className="w-11 h-11 rounded-lg bg-white/15 flex items-center justify-center mb-5">
-                    <RefreshCw className="h-5 w-5 text-white" />
+                  <div className="w-11 h-11 rounded-lg bg-primary/10 flex items-center justify-center mb-5">
+                    <RefreshCw className="h-5 w-5 text-primary" />
                   </div>
-                  <h3 className="text-xl md:text-2xl text-white mb-2 leading-tight">
+                  <h3 className="text-xl md:text-2xl text-foreground mb-2 leading-tight">
                     Updated daily
                   </h3>
-                  <p className="text-white/55 text-sm md:text-[15px] max-w-md leading-relaxed font-sans">
+                  <p className="text-muted-foreground text-sm md:text-[15px] max-w-md leading-relaxed font-sans">
                     Prices are scraped fresh every night so you're never looking at stale data. What you see is what you'll pay at the checkout.
                   </p>
                 </div>
