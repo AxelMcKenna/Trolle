@@ -7,6 +7,7 @@ import { AuthProvider } from "@/contexts/AuthContext";
 import { LocationProvider } from "@/contexts/LocationContext";
 import { TrolleyProvider } from "@/contexts/TrolleyContext";
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
+import { LocationModal } from "@/components/location/LocationModal";
 import { Toaster } from "sonner";
 import { Analytics } from "@vercel/analytics/react";
 import { SpeedInsights } from "@vercel/speed-insights/react";
@@ -54,6 +55,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
         <AuthProvider>
           <LocationProvider>
             <TrolleyProvider>
+            <LocationModal />
             <Toaster position="top-right" richColors closeButton />
             <Suspense fallback={<PageLoader />}>
               <Routes>
