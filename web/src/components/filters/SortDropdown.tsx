@@ -23,7 +23,7 @@ const sortOptions = [
 export const SortDropdown = ({ value, onChange }: SortDropdownProps) => {
   return (
     <Select value={value} onValueChange={onChange}>
-      <SelectTrigger id="sort" className="w-full">
+      <SelectTrigger id="sort" className="w-[180px] h-8 text-sm">
         <SelectValue />
       </SelectTrigger>
       <SelectContent>

@@ -1,5 +1,5 @@
 import { memo, useState } from "react";
-import { Store, Clock, Crown, ShoppingCart, MapPin, Eye, Check } from "lucide-react";
+import { Store, Clock, ShoppingCart, MapPin, Eye, Check } from "lucide-react";
 import { Product } from "@/types";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { useTrolleyContext } from "@/contexts/TrolleyContext";
 import { QuickView } from "./QuickView";
+import { LoyaltyBadge } from "./LoyaltyBadge";
 import {
   formatPromoEndDate,
   formatDistance,
@@ -41,7 +42,7 @@ const ProductCardComponent = ({
   };
 
   return (
-    <>
+    <div className="h-full">
       <Card
         className="h-full flex flex-col overflow-hidden border bg-white hover:shadow-sm transition-shadow cursor-pointer group"
         onClick={handleCardClick}
@@ -98,7 +99,7 @@ const ProductCardComponent = ({
           </Button>
         </div>
 
-        <CardContent className="p-3 flex-1">
+        <CardContent className="p-3 flex-1 flex flex-col">
           {/* Product info */}
           <div className="mb-2">
             <h3 className="text-sm font-medium line-clamp-2 group-hover:text-primary transition-colors">
@@ -141,10 +142,7 @@ const ProductCardComponent = ({
           {hasPromo && (
             <div className="flex flex-wrap gap-1 mt-2">
               {product.price.is_member_only && (
-                <Badge variant="outline" className="text-xs gap-1">
-                  <Crown className="h-3 w-3" />
-                  Members
-                </Badge>
+                <LoyaltyBadge chain={product.chain} className="text-xs" />
               )}
               {promoEndText && (
                 <Badge variant="outline" className="text-xs gap-1">
@@ -161,6 +159,9 @@ const ProductCardComponent = ({
               ${product.price.unit_price.toFixed(2)} / {product.price.unit_measure}
             </p>
           )}
+
+          {/* Spacer pushes button to bottom */}
+          <div className="flex-1" />
 
           {/* Add to Trolley */}
           <Button
@@ -196,7 +197,7 @@ const ProductCardComponent = ({
         isOpen={showQuickView}
         onClose={() => setShowQuickView(false)}
       />
-    </>
+    </div>
   );
 };
 

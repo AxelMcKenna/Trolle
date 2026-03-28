@@ -1,7 +1,10 @@
-import { Search, MapPin, ShoppingCart } from "lucide-react";
-import { Link } from "react-router-dom";
+import { useState, useEffect, useRef } from "react";
+import { Search, MapPin, ShoppingCart, UtensilsCrossed, User, LogOut, Clock, X } from "lucide-react";
+import { Link, useNavigate } from "react-router-dom";
 import { useLocationContext } from "@/contexts/LocationContext";
 import { useTrolleyContext } from "@/contexts/TrolleyContext";
+import { useAuth } from "@/contexts/AuthContext";
+import { useSearchHistory } from "@/hooks/useSearchHistory";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 
@@ -20,6 +23,39 @@ export const Header = ({
 }: HeaderProps) => {
   const { radiusKm, isLocationSet, openLocationModal } = useLocationContext();
   const { itemCount } = useTrolleyContext();
+  const { isAuthenticated, user, displayName, signOut } = useAuth();
+  const navigate = useNavigate();
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const [searchFocused, setSearchFocused] = useState(false);
+  const { recentSearches, addSearch, clearHistory } = useSearchHistory();
+  const searchContainerRef = useRef<HTMLDivElement>(null);
+
+  // Close search history on outside click
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (searchContainerRef.current && !searchContainerRef.current.contains(e.target as Node)) {
+        setSearchFocused(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  const handleSearchSubmit = () => {
+    if (query.trim()) addSearch(query.trim());
+    onSearch();
+    setSearchFocused(false);
+  };
+
+  // Close user menu on Escape key
+  useEffect(() => {
+    if (!userMenuOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setUserMenuOpen(false);
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [userMenuOpen]);
 
   if (variant === 'landing') {
     return (
@@ -33,12 +69,13 @@ export const Header = ({
               Compare grocery prices across NZ
             </p>
             <div className="max-w-xl mx-auto relative">
-              <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
+              <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" aria-hidden="true" />
               <Input
                 placeholder="Search for groceries..."
+                aria-label="Search for groceries"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && onSearch()}
+                onKeyDown={(e) => e.key === "Enter" && handleSearchSubmit()}
                 className="pl-12 h-12 bg-white text-base"
               />
             </div>
@@ -50,7 +87,7 @@ export const Header = ({
 
   return (
     <header className="bg-primary border-b border-primary">
-      <div className="px-4 py-3">
+      <div className="px-4 py-4">
         <div className="flex items-center justify-between gap-6">
           {/* Logo - hugs left edge */}
           <Link to="/" className="flex-shrink-0">
@@ -59,29 +96,68 @@ export const Header = ({
 
           {/* Search - centered */}
           <div className="flex-1 flex justify-center">
-            <div className="relative w-full max-w-md">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <div ref={searchContainerRef} className="relative w-full max-w-md">
+              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" aria-hidden="true" />
               <Input
                 placeholder="Search products..."
+                aria-label="Search products"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && onSearch()}
-                className="pl-10 h-9 bg-white text-sm"
+                onKeyDown={(e) => e.key === "Enter" && handleSearchSubmit()}
+                onFocus={() => setSearchFocused(true)}
+                className="pl-10 h-10 bg-white text-sm"
               />
+              {/* Recent searches dropdown */}
+              {searchFocused && !query && recentSearches.length > 0 && (
+                <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-white border rounded-lg shadow-lg overflow-hidden">
+                  <div className="flex items-center justify-between px-3 py-2 border-b">
+                    <span className="text-xs font-medium text-muted-foreground">Recent searches</span>
+                    <button onClick={clearHistory} className="text-xs text-muted-foreground hover:text-foreground">
+                      Clear
+                    </button>
+                  </div>
+                  {recentSearches.map((s) => (
+                    <button
+                      key={s}
+                      className="w-full flex items-center gap-2 px-3 py-2 text-sm text-left hover:bg-secondary/50 transition-colors"
+                      onClick={() => {
+                        setQuery(s);
+                        setSearchFocused(false);
+                        onSearch();
+                      }}
+                    >
+                      <Clock className="h-3 w-3 text-muted-foreground flex-shrink-0" />
+                      <span className="truncate">{s}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
 
           {/* Right actions */}
           <div className="flex items-center gap-1 flex-shrink-0">
+            <Link to="/recipes">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-white hover:bg-white/10"
+                aria-label="Recipes"
+              >
+                <UtensilsCrossed className="h-4 w-4" />
+                <span className="hidden sm:inline ml-1">Recipes</span>
+              </Button>
+            </Link>
             <Link to="/trolley">
               <Button
                 variant="ghost"
                 size="sm"
                 className="text-white hover:bg-white/10 relative"
+                aria-label={`Trolley${itemCount > 0 ? ` (${itemCount} items)` : ''}`}
               >
                 <ShoppingCart className="h-4 w-4" />
                 {itemCount > 0 && (
-                  <span className="absolute -top-1 -right-1 bg-white text-primary text-[10px] font-bold rounded-full h-4 min-w-[16px] flex items-center justify-center px-0.5">
+                  <span className="absolute -top-1 -right-1 bg-white text-primary text-[10px] font-bold rounded-full h-4 min-w-[16px] flex items-center justify-center px-0.5" aria-hidden="true">
                     {itemCount}
                   </span>
                 )}
@@ -92,12 +168,62 @@ export const Header = ({
               size="sm"
               onClick={openLocationModal}
               className="text-white hover:bg-white/10 gap-2"
+              aria-label={isLocationSet ? `Location: ${radiusKm} km radius` : 'Set location'}
             >
               <MapPin className="h-4 w-4" />
               <span className="hidden sm:inline">
                 {isLocationSet ? `${radiusKm} km` : 'Location'}
               </span>
             </Button>
+
+            {/* User menu */}
+            {isAuthenticated ? (
+              <div className="relative">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-white hover:bg-white/10"
+                  onClick={() => setUserMenuOpen(!userMenuOpen)}
+                  aria-label="User menu"
+                  aria-expanded={userMenuOpen}
+                >
+                  <div className="w-6 h-6 bg-white/20 rounded-full flex items-center justify-center text-xs font-bold">
+                    {(displayName?.[0] ?? user?.email?.[0] ?? "U").toUpperCase()}
+                  </div>
+                </Button>
+                {userMenuOpen && (
+                  <>
+                    <div className="fixed inset-0 z-40" onClick={() => setUserMenuOpen(false)} />
+                    <div className="absolute right-0 top-full mt-1 w-48 bg-white rounded-lg shadow-lg border z-50 py-1">
+                      <div className="px-3 py-2 border-b">
+                        {displayName && (
+                          <p className="text-sm font-medium text-gray-900 truncate">{displayName}</p>
+                        )}
+                        <p className="text-xs text-gray-500 truncate">{user?.email}</p>
+                      </div>
+                      <button
+                        className="w-full px-3 py-2 text-sm text-left hover:bg-gray-50 flex items-center gap-2"
+                        onClick={() => { setUserMenuOpen(false); navigate("/account"); }}
+                      >
+                        <User className="h-3.5 w-3.5" /> Account
+                      </button>
+                      <button
+                        className="w-full px-3 py-2 text-sm text-left hover:bg-gray-50 flex items-center gap-2 text-red-600"
+                        onClick={() => { setUserMenuOpen(false); signOut(); }}
+                      >
+                        <LogOut className="h-3.5 w-3.5" /> Sign Out
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
+            ) : (
+              <Link to="/login">
+                <Button variant="ghost" size="sm" className="text-white hover:bg-white/10">
+                  Sign In
+                </Button>
+              </Link>
+            )}
           </div>
         </div>
       </div>

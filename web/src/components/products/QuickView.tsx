@@ -1,4 +1,4 @@
-import { ExternalLink, Store, Clock, Crown, Package, MapPin, ShoppingCart, Check } from "lucide-react";
+import { ExternalLink, Store, Clock, Package, MapPin, ShoppingCart, Check } from "lucide-react";
 import { Product } from "@/types";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -6,12 +6,14 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
 import { useTrolleyContext } from "@/contexts/TrolleyContext";
+import { useRecentlyViewed } from "@/hooks/useRecentlyViewed";
 import {
   formatPromoEndDate,
   formatDistanceAway,
   getDistanceColorClass,
   calculateSavingsPercent,
 } from "@/lib/formatters";
+import { LoyaltyBadge } from "./LoyaltyBadge";
 
 interface QuickViewProps {
   product: Product | null;
@@ -25,8 +27,21 @@ export const QuickView = ({
   onClose,
 }: QuickViewProps) => {
   const { addItem, removeItem, isInTrolley } = useTrolleyContext();
+  const { addViewed } = useRecentlyViewed();
 
   if (!product) return null;
+
+  // Track recently viewed when QuickView opens
+  if (isOpen) {
+    addViewed({
+      id: product.id,
+      name: product.name,
+      image_url: product.image_url,
+      chain: product.chain,
+      price_nzd: product.price.promo_price_nzd ?? product.price.price_nzd,
+      size: product.size,
+    });
+  }
 
   const inTrolley = isInTrolley(product.id);
   const hasPromo = product.price.promo_price_nzd && product.price.promo_price_nzd < product.price.price_nzd;
@@ -104,10 +119,7 @@ export const QuickView = ({
             {hasPromo && (
               <div className="flex flex-wrap gap-2 mb-4">
                 {product.price.is_member_only && (
-                  <Badge variant="outline" className="gap-1 text-gold border-gold">
-                    <Crown className="h-3 w-3" />
-                    Members Only
-                  </Badge>
+                  <LoyaltyBadge chain={product.chain} />
                 )}
                 {promoEndText && (
                   <Badge variant="outline" className="gap-1 text-primary border-primary/30">

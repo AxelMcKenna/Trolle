@@ -1,8 +1,7 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import axios from 'axios';
 import { TrolleyItem, TrolleyCompareResponse } from '@/types';
-
-const API_BASE = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
+import { api } from '@/lib/api';
 
 export const useTrolleyCompare = () => {
   const [comparison, setComparison] = useState<TrolleyCompareResponse | null>(null);
@@ -11,7 +10,7 @@ export const useTrolleyCompare = () => {
   const activeRequest = useRef<AbortController | null>(null);
 
   const compare = useCallback(
-    async (items: TrolleyItem[], lat: number, lon: number, radiusKm: number) => {
+    async (items: TrolleyItem[], lat: number, lon: number, radiusKm: number, loyaltyCards?: Record<string, boolean>) => {
       activeRequest.current?.abort();
       const controller = new AbortController();
       activeRequest.current = controller;
@@ -20,8 +19,8 @@ export const useTrolleyCompare = () => {
       setError(null);
 
       try {
-        const { data } = await axios.post<TrolleyCompareResponse>(
-          `${API_BASE}/trolley/compare`,
+        const { data } = await api.post<TrolleyCompareResponse>(
+          `/trolley/compare`,
           {
             items: items.map((i) => ({
               product_id: i.product_id,
@@ -30,6 +29,7 @@ export const useTrolleyCompare = () => {
             lat,
             lon,
             radius_km: radiusKm,
+            loyalty_cards: loyaltyCards,
           },
           { signal: controller.signal }
         );

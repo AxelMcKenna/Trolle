@@ -1,16 +1,18 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { Header } from '@/components/layout/Header';
 import { FilterBar } from '@/components/filters/FilterBar';
 import { FilterSidebar } from '@/components/filters/FilterSidebar';
+import { CategoryBar } from '@/components/filters/CategoryBar';
+import { SortDropdown } from '@/components/filters/SortDropdown';
 import { ProductGrid } from '@/components/products/ProductGrid';
-import { LocationGate } from '@/components/location/LocationGate';
 import { usePaginatedProducts } from '@/hooks/usePaginatedProducts';
 import { useFilters } from '@/hooks/useFilters';
+import { useRecentlyViewed } from '@/hooks/useRecentlyViewed';
 import { useLocationContext } from '@/contexts/LocationContext';
 import { useSearchParams } from 'react-router-dom';
-import { MapPin, Navigation } from 'lucide-react';
+import { MapPin } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
+import { SortOption } from '@/types';
 import {
   Pagination,
   PaginationContent,
@@ -28,6 +30,7 @@ export const Explore = () => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const { location, radiusKm, isLocationSet, openLocationModal, requestAutoLocation, loading: locationLoading, error: locationError } = useLocationContext();
   const { filters, updateFilters } = useFilters();
+  const { recentlyViewed } = useRecentlyViewed();
   const { products, total, loading, error, currentPage, totalPages, fetchProducts, goToPage, clearProducts } = usePaginatedProducts();
   const page = parseInt(searchParams.get('page') || '1', 10);
   const previousFetchInputsRef = useRef<{ page: number; nonPageKey: string } | null>(null);
@@ -37,10 +40,6 @@ export const Explore = () => {
   }, [filters.query]);
 
   useEffect(() => {
-    if (!location || !isLocationSet) {
-      return;
-    }
-
     const nonPageKey = JSON.stringify({
       filters,
       location,
@@ -59,9 +58,9 @@ export const Explore = () => {
 
     const fetchFilters = {
       ...filters,
-      lat: location.lat,
-      lon: location.lon,
-      radius_km: radiusKm,
+      ...(location && isLocationSet
+        ? { lat: location.lat, lon: location.lon, radius_km: radiusKm }
+        : {}),
     };
 
     if (pageChangedOnly) {
@@ -87,7 +86,7 @@ export const Explore = () => {
     goToPage(newPage);
   };
 
-  const getPageNumbers = () => {
+  const pageNumbers = useMemo(() => {
     const pages: (number | 'ellipsis')[] = [];
     const maxVisible = 7;
 
@@ -117,7 +116,7 @@ export const Explore = () => {
     }
 
     return pages;
-  };
+  }, [currentPage, totalPages]);
 
   const handleSearch = () => {
     const trimmedQuery = searchQuery.trim();
@@ -134,7 +133,6 @@ export const Explore = () => {
   };
 
   return (
-    <LocationGate>
       <div className="min-h-screen bg-secondary">
         <div className="sticky top-0 z-50 bg-secondary">
           <Header
@@ -153,73 +151,92 @@ export const Explore = () => {
           />
 
           <main className="flex-1 overflow-y-auto min-h-screen overscroll-none">
+            <CategoryBar />
             <div className="max-w-6xl mx-auto px-4 py-6 pb-32">
-              {/* Location requirement gate */}
+              {/* Location banner — soft prompt instead of gate */}
               {!isLocationSet && (
-                <div className="flex items-center justify-center min-h-[50vh]">
-                  <Card className="p-8 text-center max-w-md border bg-card">
-                    <div className="inline-flex items-center justify-center w-12 h-12 rounded-lg bg-secondary mb-4">
-                      <Navigation className="h-6 w-6 text-primary" />
-                    </div>
-                    <h2 className="text-xl font-semibold mb-2">
-                      Location Required
-                    </h2>
-                    <p className="text-sm text-muted-foreground mb-6">
-                      Enable location to see products from stores in your area.
-                    </p>
-                    {locationError && (
-                      <div className="mb-4 p-3 bg-destructive/10 border border-destructive/20 rounded-lg">
-                        <p className="text-sm text-destructive">{locationError}</p>
-                      </div>
-                    )}
-                    <div className="space-y-2">
-                      <Button
-                        onClick={requestAutoLocation}
-                        disabled={locationLoading}
-                        className="w-full"
-                      >
-                        {locationLoading ? (
-                          'Getting location...'
-                        ) : (
-                          <>
-                            <Navigation className="h-4 w-4 mr-2" />
-                            Use My Location
-                          </>
-                        )}
-                      </Button>
-                      <Button
-                        onClick={openLocationModal}
-                        variant="outline"
-                        className="w-full"
-                      >
-                        <MapPin className="h-4 w-4 mr-2" />
-                        Set Manually
-                      </Button>
-                    </div>
-                  </Card>
+                <div className="mb-4 flex items-center gap-3 p-3 bg-primary/5 border border-primary/15 rounded-lg">
+                  <MapPin className="h-4 w-4 text-primary flex-shrink-0" />
+                  <p className="text-sm text-muted-foreground flex-1">
+                    Set your location to see store distances and nearby prices.
+                  </p>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={requestAutoLocation}
+                    disabled={locationLoading}
+                    className="flex-shrink-0"
+                  >
+                    {locationLoading ? 'Locating...' : 'Enable'}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={openLocationModal}
+                    className="flex-shrink-0"
+                  >
+                    Set manually
+                  </Button>
                 </div>
               )}
 
-              {/* Content when location is set */}
-              {isLocationSet && (
-                <>
+              {/* Recently viewed — show when no active search */}
+              {!filters.query && recentlyViewed.length > 0 && (
+                <div className="mb-6">
+                  <h3 className="text-sm font-semibold text-muted-foreground mb-2 uppercase tracking-wide">
+                    Recently Viewed
+                  </h3>
+                  <div className="flex gap-3 overflow-x-auto pb-2 -mx-1 px-1 scrollbar-thin">
+                    {recentlyViewed.slice(0, 10).map((p) => (
+                      <div
+                        key={p.id}
+                        className="flex-shrink-0 w-28 bg-white rounded-lg border p-2 hover:shadow-sm transition-shadow cursor-pointer"
+                      >
+                        {p.image_url ? (
+                          <img
+                            src={p.image_url}
+                            alt={p.name}
+                            className="w-full h-20 object-contain rounded mb-1.5"
+                            loading="lazy"
+                          />
+                        ) : (
+                          <div className="w-full h-20 bg-muted rounded flex items-center justify-center mb-1.5">
+                            <span className="text-muted-foreground/30 text-xs">No image</span>
+                          </div>
+                        )}
+                        <p className="text-[11px] font-medium line-clamp-2 leading-tight">{p.name}</p>
+                        <p className="text-xs font-semibold text-primary mt-0.5">${p.price_nzd.toFixed(2)}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Product content — always shown */}
+              <>
                   {error && (
                     <div className="bg-destructive/10 border border-destructive/20 rounded-lg p-4 mb-4">
                       <p className="text-sm text-destructive">{error}</p>
                     </div>
                   )}
 
-                  {/* Results count */}
-                  {!loading && products.length > 0 && (
-                    <div className="mb-4 flex items-center justify-between text-sm text-muted-foreground">
-                      <span>
-                        {total === 0
+                  {/* Results count + Sort */}
+                  <div className="mb-4 flex items-center justify-between">
+                    <span className="text-sm text-muted-foreground">
+                      {loading
+                        ? ''
+                        : total === 0
                           ? 'No products found'
-                          : `${(currentPage - 1) * 24 + 1}-${Math.min(currentPage * 24, total)} of ${total}`}
-                      </span>
-                      <span>Page {currentPage} of {totalPages}</span>
+                          : `${(currentPage - 1) * 24 + 1}\u2013${Math.min(currentPage * 24, total)} of ${total.toLocaleString()}`}
+                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-muted-foreground hidden sm:inline">Sort by</span>
+                      <SortDropdown
+                        value={filters.sort || SortOption.CHEAPEST}
+                        onChange={(sort) => updateFilters({ sort })}
+                      />
                     </div>
-                  )}
+                  </div>
 
                   <ProductGrid
                     products={products}
@@ -238,7 +255,7 @@ export const Explore = () => {
                             />
                           </PaginationItem>
 
-                          {getPageNumbers().map((pageNum, idx) =>
+                          {pageNumbers.map((pageNum, idx) =>
                             pageNum === 'ellipsis' ? (
                               <PaginationItem key={`ellipsis-${idx}`}>
                                 <PaginationEllipsis />
@@ -274,13 +291,11 @@ export const Explore = () => {
                     </div>
                   )}
                 </>
-              )}
             </div>
           </main>
         </div>
 
       </div>
-    </LocationGate>
   );
 };
 
