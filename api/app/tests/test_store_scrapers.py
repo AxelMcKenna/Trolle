@@ -1,35 +1,12 @@
 """
-Tests for store location scrapers.
-
-Tests store location scrapers for countdown, new_world, and paknsave chains.
+Tests for store data files and store seeding runner.
 """
 from __future__ import annotations
 
 import json
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
-from app.store_scrapers.base import StoreLocationScraper
-
-
-class TestStoreLocationScraperBase:
-    """Tests for the StoreLocationScraper base class."""
-
-    def test_base_class_is_abstract(self):
-        """Test that base class cannot be instantiated directly."""
-        with pytest.raises(TypeError):
-            StoreLocationScraper()
-
-    def test_subclass_requires_fetch_stores(self):
-        """Test that subclasses must implement fetch_stores."""
-        class InvalidScraper(StoreLocationScraper):
-            chain = "test"
-            store_locator_url = "https://example.com"
-
-        with pytest.raises(TypeError):
-            InvalidScraper()
 
 
 class TestNZStoreCoverage:

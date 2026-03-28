@@ -18,20 +18,17 @@ import logging
 import os
 import sys
 from pathlib import Path
-from typing import Dict, Type
+from typing import Dict
 
 from sqlalchemy import text
 
 from app.db.session import get_async_session
-from app.store_scrapers.base import StoreLocationScraper
 
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(levelname)-8s %(name)s | %(message)s",
 )
 logger = logging.getLogger(__name__)
-
-STORE_CHAINS: Dict[str, Type[StoreLocationScraper]] = {}
 
 # All chains use static JSON store lists
 _JSON_STORE_CHAINS: Dict[str, str] = {
@@ -175,40 +172,18 @@ async def run_json_chain(chain: str, filename: str) -> None:
 
 
 async def run_chain(chain: str) -> None:
-    """Run a single store scraper (or JSON load) and upsert results."""
-    # Check JSON-based chains first
+    """Load stores from JSON and upsert into DB."""
     json_file = _JSON_STORE_CHAINS.get(chain)
-    if json_file:
-        await run_json_chain(chain, json_file)
+    if not json_file:
+        logger.error(f"Unknown chain: {chain}. Available: {', '.join(_JSON_STORE_CHAINS.keys())}")
         return
-
-    scraper_cls = STORE_CHAINS.get(chain)
-    if not scraper_cls:
-        all_chains = list(STORE_CHAINS.keys()) + list(_JSON_STORE_CHAINS.keys())
-        logger.error(f"Unknown chain: {chain}. Available: {', '.join(all_chains)}")
-        return
-
-    logger.info(f"[{chain}] Starting store scrape...")
-    try:
-        async with scraper_cls() as scraper:
-            stores = await scraper.fetch_stores()
-
-        logger.info(f"[{chain}] Fetched {len(stores)} stores")
-
-        if stores:
-            upserted, skipped = await upsert_stores(chain, stores)
-            logger.info(f"[{chain}] Upserted {upserted}, skipped {skipped}")
-        else:
-            logger.warning(f"[{chain}] No stores returned")
-
-    except Exception:
-        logger.exception(f"[{chain}] Store scrape failed")
+    await run_json_chain(chain, json_file)
 
 
 async def main(chains: list[str] | None = None) -> None:
     """Run store scrapers for given chains (or all)."""
     if not chains:
-        chains = list(STORE_CHAINS.keys()) + list(_JSON_STORE_CHAINS.keys())
+        chains = list(_JSON_STORE_CHAINS.keys())
 
     logger.info(f"Running store scrapers for: {', '.join(chains)}")
 
