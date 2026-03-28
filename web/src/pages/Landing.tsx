@@ -167,7 +167,7 @@ export const Landing = () => {
         <div className="relative z-10 max-w-7xl mx-auto px-4 pt-6 pb-40 md:pb-44">
           {/* Nav — logo left, account right */}
           <div className="flex items-center justify-between mb-14 md:mb-20 animate-fade-up">
-            <Link to="/" className="text-xl font-semibold text-white tracking-tight font-serif">
+            <Link to="/" className="text-xl font-bold text-white font-sans tracking-[0.15em]">
               TROLL-E
             </Link>
             <div className="flex items-center gap-1">

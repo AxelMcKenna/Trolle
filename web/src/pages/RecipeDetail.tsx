@@ -95,7 +95,7 @@ export const RecipeDetail = () => {
       <div className="min-h-screen bg-secondary">
         <div className="bg-primary text-white px-4 py-3">
           <div className="max-w-6xl mx-auto">
-            <Link to="/recipes" className="text-lg font-semibold">TROLL-E</Link>
+            <Link to="/recipes" className="text-lg font-bold font-sans tracking-[0.15em]">TROLL-E</Link>
           </div>
         </div>
         <div className="max-w-6xl mx-auto px-4 py-24 text-center">
@@ -115,7 +115,7 @@ export const RecipeDetail = () => {
       <div className="bg-primary text-white px-4 py-3">
         <div className="max-w-6xl mx-auto flex items-center justify-between">
           <div className="flex items-center gap-3 min-w-0">
-            <Link to="/" className="text-lg font-semibold flex-shrink-0">TROLL-E</Link>
+            <Link to="/" className="text-lg font-bold font-sans tracking-[0.15em] flex-shrink-0">TROLL-E</Link>
             <span className="text-white/60 flex-shrink-0">/</span>
             <Link to="/recipes" className="text-sm text-white/80 hover:text-white flex-shrink-0">Recipes</Link>
             <span className="text-white/60 flex-shrink-0">/</span>

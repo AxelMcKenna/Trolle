@@ -51,7 +51,7 @@ export const RecipeCreate = () => {
       {/* Header bar */}
       <div className="bg-primary text-white px-4 py-3">
         <div className="max-w-6xl mx-auto flex items-center gap-3">
-          <Link to="/" className="text-lg font-semibold">TROLL-E</Link>
+          <Link to="/" className="text-lg font-bold font-sans tracking-[0.15em]">TROLL-E</Link>
           <span className="text-white/60">/</span>
           <Link to="/recipes" className="text-sm text-white/80 hover:text-white">Recipes</Link>
           <span className="text-white/60">/</span>

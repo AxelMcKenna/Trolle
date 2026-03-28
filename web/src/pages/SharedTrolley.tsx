@@ -90,7 +90,7 @@ export const SharedTrolley = () => {
     <div className="min-h-screen bg-secondary">
       <div className="bg-primary text-white px-4 py-3">
         <div className="max-w-2xl mx-auto flex items-center justify-between">
-          <Link to="/" className="text-lg font-semibold">TROLL-E</Link>
+          <Link to="/" className="text-lg font-bold font-sans tracking-[0.15em]">TROLL-E</Link>
           <Link to="/trolley">
             <Button variant="ghost" size="sm" className="text-white hover:bg-white/10">
               <ShoppingCart className="h-4 w-4 mr-1" />My Trolley
