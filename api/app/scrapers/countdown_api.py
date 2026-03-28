@@ -26,8 +26,19 @@ from app.db.models import IngestionRun, Store
 from app.db.session import async_transaction
 from app.scrapers.base import Scraper
 from app.services.category_mapper import classify_product
+from app.services.normalizer import (
+    clean_product_name,
+    normalize_brand,
+    parse_structured_size,
+)
+from app.workers.retry import retry_with_backoff
 
 logger = logging.getLogger(__name__)
+
+# Concurrency controls
+SEARCH_TERM_CONCURRENCY = 3  # max concurrent search-term fetches per store
+STORE_PROBE_CONCURRENCY = 10  # max concurrent probes for online stores
+INTER_STORE_DELAY = 0.5  # seconds between stores
 
 
 class CountdownAPIScraper(Scraper):
@@ -74,10 +85,23 @@ class CountdownAPIScraper(Scraper):
         Scraper.__init__(self)
         self.cookies: dict = {}
         self._online_store_ids: Optional[set[str]] = None
+        self._http: Optional[httpx.AsyncClient] = None
 
     # ------------------------------------------------------------------
     # Store helpers
     # ------------------------------------------------------------------
+
+    def _get_http_client(self) -> httpx.AsyncClient:
+        """Return a shared HTTP client, creating one if needed."""
+        if self._http is None or self._http.is_closed:
+            self._http = httpx.AsyncClient(timeout=30.0)
+        return self._http
+
+    async def _close_http_client(self) -> None:
+        """Close the shared HTTP client."""
+        if self._http and not self._http.is_closed:
+            await self._http.aclose()
+            self._http = None
 
     def _load_store_list(self) -> List[dict]:
         """Load store list from countdown_stores.json."""
@@ -93,8 +117,7 @@ class CountdownAPIScraper(Scraper):
     async def _load_online_store_ids(self) -> set[str]:
         """Probe the API to discover which store IDs return real products.
 
-        A store is considered "online-capable" if a search for ``milk``
-        with its ``storeId`` returns at least one item with a valid SKU.
+        Probes up to STORE_PROBE_CONCURRENCY stores concurrently.
         Results are cached for the scraper's lifetime.
         """
         if self._online_store_ids is not None:
@@ -102,20 +125,23 @@ class CountdownAPIScraper(Scraper):
 
         all_stores = self._load_store_list()
         online: set[str] = set()
+        sem = asyncio.Semaphore(STORE_PROBE_CONCURRENCY)
 
-        for store in all_stores:
+        async def probe(store: dict) -> None:
             sid = store.get("id", "")
             if not sid:
-                continue
-            try:
-                data = await self._fetch_search("milk", page=1, size=3, store_id=sid)
-                items = data.get("products", {}).get("items", [])
-                real_items = [i for i in items if i.get("sku")]
-                if real_items:
-                    online.add(sid)
-            except Exception:
-                pass
-            await asyncio.sleep(0.15)
+                return
+            async with sem:
+                try:
+                    data = await self._fetch_search("milk", page=1, size=3, store_id=sid)
+                    items = data.get("products", {}).get("items", [])
+                    if any(i.get("sku") for i in items):
+                        online.add(sid)
+                except Exception:
+                    pass
+                await asyncio.sleep(0.1)
+
+        await asyncio.gather(*[probe(s) for s in all_stores])
 
         logger.info(
             f"Discovered {len(online)}/{len(all_stores)} online-capable stores"
@@ -176,10 +202,10 @@ class CountdownAPIScraper(Scraper):
         if store_id:
             url += f"&storeId={store_id}"
 
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            response = await client.get(url, headers=headers)
-            response.raise_for_status()
-            return response.json()
+        client = self._get_http_client()
+        response = await client.get(url, headers=headers)
+        response.raise_for_status()
+        return response.json()
 
     # ------------------------------------------------------------------
     # Parsing
@@ -227,6 +253,9 @@ class CountdownAPIScraper(Scraper):
         size_info = product_data.get("size", {})
         size_value = size_info.get("volumeSize", "") if size_info else ""
 
+        # Parse structured size fields for numeric matching
+        structured = parse_structured_size(size_value or full_name)
+
         unit_price = None
         unit_measure = None
         avg_qty_price = price_info.get("averageQuantityPrice")
@@ -252,6 +281,11 @@ class CountdownAPIScraper(Scraper):
             size=size_value or None,
             unit_price=unit_price,
             unit_measure=unit_measure,
+            volume_ml=structured.volume_ml,
+            weight_g=structured.weight_g,
+            pack_count=structured.pack_count,
+            normalized_name=clean_product_name(full_name, brand),
+            normalized_brand=normalize_brand(brand) if brand else None,
         )
 
     async def fetch_catalog_pages(self) -> List[str]:
@@ -310,27 +344,32 @@ class CountdownAPIScraper(Scraper):
         logger.info(f"Cookie auth succeeded ({len(probe_items)} probe items)")
         return True
 
-    async def _scrape_search_terms(
-        self, store_id: Optional[str] = None
+    async def _scrape_single_term(
+        self,
+        sem: asyncio.Semaphore,
+        term: str,
+        store_id: Optional[str],
+        seen_skus: set[str],
     ) -> List[dict]:
-        """Run the full search-term sweep, returning parsed product dicts.
+        """Scrape all pages for a single search term, gated by semaphore.
 
-        If *store_id* is provided, each API call includes ``&storeId=…``
-        and products are tagged with ``store_id``.
+        *seen_skus* is shared across terms for deduplication (safe in asyncio
+        single-threaded event loop).
         """
-        seen_skus: set[str] = set()
-        all_products: List[dict] = []
-
-        store_label = f" [store {store_id}]" if store_id else ""
-
-        for term in self.search_terms:
-            logger.info(f"Searching{store_label}: '{term}'")
+        async with sem:
+            products: List[dict] = []
+            store_label = f" [store {store_id}]" if store_id else ""
             page_num = 1
 
             while True:
                 try:
-                    response = await self._fetch_search(
-                        term, page=page_num, store_id=store_id
+                    response = await retry_with_backoff(
+                        lambda _t=term, _p=page_num, _s=store_id: self._fetch_search(
+                            _t, page=_p, store_id=_s
+                        ),
+                        max_retries=3,
+                        base_delay=5.0,
+                        label=f"countdown search '{term}' p{page_num}",
                     )
                     items = response.get("products", {}).get("items", [])
 
@@ -347,7 +386,7 @@ class CountdownAPIScraper(Scraper):
                             product = self._parse_product(item_data)
                             if store_id:
                                 product["store_id"] = store_id
-                            all_products.append(product)
+                            products.append(product)
                             new_count += 1
                         except Exception as e:
                             logger.debug(f"Error parsing product: {e}")
@@ -361,14 +400,39 @@ class CountdownAPIScraper(Scraper):
                         break
 
                     page_num += 1
-                    await asyncio.sleep(0.5)
+                    await asyncio.sleep(0.3)
 
                 except Exception as e:
                     logger.error(f"Error searching '{term}' page {page_num}{store_label}: {e}")
                     break
 
-            await asyncio.sleep(1)
+            await asyncio.sleep(0.5)
+            return products
 
+    async def _scrape_search_terms(
+        self, store_id: Optional[str] = None
+    ) -> List[dict]:
+        """Run the full search-term sweep with concurrent fetching.
+
+        Up to SEARCH_TERM_CONCURRENCY terms are fetched in parallel.
+        """
+        seen_skus: set[str] = set()
+        sem = asyncio.Semaphore(SEARCH_TERM_CONCURRENCY)
+
+        tasks = [
+            self._scrape_single_term(sem, term, store_id, seen_skus)
+            for term in self.search_terms
+        ]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        all_products: List[dict] = []
+        for i, result in enumerate(results):
+            if isinstance(result, Exception):
+                logger.error(f"Search term task failed for '{self.search_terms[i]}': {result}")
+                continue
+            all_products.extend(result)
+
+        store_label = f" [store {store_id}]" if store_id else ""
         logger.info(
             f"Scraped{store_label} {len(all_products)} unique products "
             f"from {len(seen_skus)} SKUs across {len(self.search_terms)} search terms"
@@ -511,7 +575,7 @@ class CountdownAPIScraper(Scraper):
 
                 # Delay between stores
                 if idx < len(online_stores):
-                    await asyncio.sleep(2)
+                    await asyncio.sleep(INTER_STORE_DELAY)
 
             # Phase 2: Fallback scrape for non-online stores
             if fallback_stores:
@@ -582,6 +646,8 @@ class CountdownAPIScraper(Scraper):
                 run.status = "failed"
                 run.finished_at = datetime.utcnow()
             raise
+        finally:
+            await self._close_http_client()
 
 
 __all__ = ["CountdownAPIScraper"]

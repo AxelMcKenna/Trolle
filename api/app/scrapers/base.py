@@ -13,6 +13,7 @@ from sqlalchemy.dialects.postgresql import insert
 from app.core.config import get_settings
 from app.db.models import IngestionRun, Price, Product, Store
 from app.db.session import async_transaction
+from app.services.alerting import send_alert
 
 
 settings = get_settings()
@@ -78,20 +79,39 @@ class Scraper(abc.ABC):
                     # from changed_count or it can go negative.
 
                 except Exception as e:
-                    logger.error(f"Failed to parse page: {e}")
+                    logger.error(
+                        f"Failed to parse page: {e}",
+                        extra={"chain": self.chain},
+                    )
                     failed_items += 1
 
             # Update ingestion run with results
+            failure_rate = failed_items / total_items if total_items > 0 else 0.0
+            if failure_rate > 0.2:
+                status = "completed_with_errors"
+            else:
+                status = "completed"
+
             async with async_transaction() as session:
                 result = await session.execute(
                     select(IngestionRun).where(IngestionRun.id == run.id)
                 )
                 run = result.scalar_one()
-                run.status = "completed"
+                run.status = status
                 run.finished_at = datetime.utcnow()
                 run.items_total = total_items
                 run.items_changed = changed_items
                 run.items_failed = failed_items
+
+            if failure_rate > 0.5:
+                await send_alert(
+                    title=f"High failure rate: {self.chain}",
+                    message=f"{failed_items}/{total_items} items failed ({failure_rate:.0%})",
+                    severity="warning",
+                    chain=self.chain,
+                    items_total=total_items,
+                    items_failed=failed_items,
+                )
 
             # Sweep stale promos (chain-wide scrapers only)
             if not self._sweep_per_store and self._run_started_at:
@@ -105,7 +125,9 @@ class Scraper(abc.ABC):
 
             logger.info(
                 f"Scraper completed: {total_items} items, "
-                f"{changed_items} changed, {failed_items} failed"
+                f"{changed_items} changed, {failed_items} failed",
+                extra={"chain": self.chain, "items_total": total_items,
+                       "items_changed": changed_items, "items_failed": failed_items},
             )
             return run
 
@@ -152,6 +174,11 @@ class Scraper(abc.ABC):
         size: Optional[str] = None,
         unit_price: Optional[float] = None,
         unit_measure: Optional[str] = None,
+        volume_ml: Optional[float] = None,
+        weight_g: Optional[float] = None,
+        pack_count: Optional[int] = None,
+        normalized_name: Optional[str] = None,
+        normalized_brand: Optional[str] = None,
         **kwargs  # Allow additional fields
     ) -> dict:
         """
@@ -174,6 +201,11 @@ class Scraper(abc.ABC):
             size: Display size e.g. "500g", "1L" (optional)
             unit_price: Price per unit measure (optional)
             unit_measure: Unit measure e.g. "kg", "100g" (optional)
+            volume_ml: Total volume in ml (optional)
+            weight_g: Total weight in grams (optional)
+            pack_count: Number of items in multipack (optional)
+            normalized_name: Cleaned name for matching (optional)
+            normalized_brand: Lowercased brand (optional)
             **kwargs: Additional fields to include
 
         Returns:
@@ -190,6 +222,11 @@ class Scraper(abc.ABC):
             "size": size,
             "unit_price": unit_price,
             "unit_measure": unit_measure,
+            "volume_ml": volume_ml,
+            "weight_g": weight_g,
+            "pack_count": pack_count,
+            "normalized_name": normalized_name,
+            "normalized_brand": normalized_brand,
             "price_nzd": price_nzd,
             "promo_price_nzd": promo_price_nzd,
             "promo_text": promo_text[:255] if promo_text else None,
@@ -213,8 +250,11 @@ class Scraper(abc.ABC):
         now = datetime.utcnow()
         changed_count = 0
 
-        # Step 1: Bulk upsert all products
+        # Step 1: Bulk upsert all products (with optional embeddings)
+        from app.services.embeddings import embed_product_text, embed_texts
+
         product_values = []
+        embedding_texts = []
         for product_data in products_data:
             product_values.append({
                 "chain": product_data["chain"],
@@ -229,16 +269,31 @@ class Scraper(abc.ABC):
                 "unit_measure": product_data.get("unit_measure"),
                 "image_url": product_data.get("image_url"),
                 "product_url": product_data.get("url"),
+                "volume_ml": product_data.get("volume_ml"),
+                "weight_g": product_data.get("weight_g"),
+                "pack_count": product_data.get("pack_count"),
+                "normalized_name": product_data.get("normalized_name"),
+                "normalized_brand": product_data.get("normalized_brand"),
             })
+            embedding_texts.append(embed_product_text(
+                department=product_data.get("department"),
+                subcategory=product_data.get("subcategory"),
+                brand=product_data.get("brand"),
+                name=product_data["name"],
+            ))
+
+        # Compute embeddings in batch (graceful: returns None if disabled)
+        embeddings = embed_texts(embedding_texts)
+        if embeddings:
+            for pv, emb in zip(product_values, embeddings):
+                pv["embedding"] = emb
 
         # Chunk product inserts to stay within asyncpg's parameter limit
         PRODUCT_CHUNK_SIZE = 2000
         for idx in range(0, len(product_values), PRODUCT_CHUNK_SIZE):
             chunk = product_values[idx: idx + PRODUCT_CHUNK_SIZE]
             stmt = insert(Product).values(chunk)
-            stmt = stmt.on_conflict_do_update(
-                index_elements=["chain", "source_product_id"],
-                set_={
+            set_dict = {
                     "name": stmt.excluded.name,
                     "brand": stmt.excluded.brand,
                     "category": stmt.excluded.category,
@@ -249,8 +304,18 @@ class Scraper(abc.ABC):
                     "unit_measure": stmt.excluded.unit_measure,
                     "image_url": stmt.excluded.image_url,
                     "product_url": stmt.excluded.product_url,
+                    "volume_ml": stmt.excluded.volume_ml,
+                    "weight_g": stmt.excluded.weight_g,
+                    "pack_count": stmt.excluded.pack_count,
+                    "normalized_name": stmt.excluded.normalized_name,
+                    "normalized_brand": stmt.excluded.normalized_brand,
                     "updated_at": now,
-                },
+            }
+            if embeddings:
+                set_dict["embedding"] = stmt.excluded.embedding
+            stmt = stmt.on_conflict_do_update(
+                index_elements=["chain", "source_product_id"],
+                set_=set_dict,
             )
             await session.execute(stmt)
         await session.flush()
@@ -365,6 +430,11 @@ class Scraper(abc.ABC):
             unit_measure=product_data.get("unit_measure"),
             image_url=product_data.get("image_url"),
             product_url=product_data.get("url"),
+            volume_ml=product_data.get("volume_ml"),
+            weight_g=product_data.get("weight_g"),
+            pack_count=product_data.get("pack_count"),
+            normalized_name=product_data.get("normalized_name"),
+            normalized_brand=product_data.get("normalized_brand"),
         )
         stmt = stmt.on_conflict_do_update(
             index_elements=["chain", "source_product_id"],
@@ -379,6 +449,11 @@ class Scraper(abc.ABC):
                 "unit_measure": stmt.excluded.unit_measure,
                 "image_url": stmt.excluded.image_url,
                 "product_url": stmt.excluded.product_url,
+                "volume_ml": stmt.excluded.volume_ml,
+                "weight_g": stmt.excluded.weight_g,
+                "pack_count": stmt.excluded.pack_count,
+                "normalized_name": stmt.excluded.normalized_name,
+                "normalized_brand": stmt.excluded.normalized_brand,
                 "updated_at": now,
             },
         )

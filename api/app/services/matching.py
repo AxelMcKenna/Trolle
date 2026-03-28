@@ -4,10 +4,11 @@ import re
 from typing import Optional
 from uuid import UUID
 
-from sqlalchemy import and_, case, func, select
+from sqlalchemy import and_, case, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import Price, Product
+from app.services.normalizer import brands_equivalent as _brands_equivalent
 
 
 _SIZE_ALIASES = {
@@ -105,6 +106,74 @@ def _db_name_cleaned():
     )
 
 
+# Regex pattern for embedded sizes like "500g", "2l", "6 x 500ml" etc.
+_SQL_SIZE_PATTERN = r"\d+\s*x\s*\d+(?:\.\d+)?\s*(?:g|kg|ml|l|pk|ea)\M|\d+(?:\.\d+)?\s*(?:g|kg|ml|l|pk|ea)\M"
+
+
+def _db_name_fully_cleaned():
+    """SQL expression that strips brand AND embedded size patterns from Product.name.
+
+    Mirrors _clean_search_name() on the DB side — removes all brand occurrences
+    via replace(), then strips embedded sizes like '500g' or '6 x 500ml' via
+    regexp_replace(), then trims whitespace.
+    """
+    brand_stripped = case(
+        (
+            and_(Product.brand.is_not(None), Product.brand != ""),
+            func.replace(
+                func.lower(Product.name),
+                func.lower(Product.brand),
+                "",
+            ),
+        ),
+        else_=func.lower(Product.name),
+    )
+    size_stripped = func.regexp_replace(brand_stripped, _SQL_SIZE_PATTERN, "", "gi")
+    return func.trim(func.regexp_replace(size_stripped, r"\s+", " ", "g"))
+
+
+def _aliased_name_fully_cleaned(product_alias):
+    """SQL expression that strips brand AND embedded sizes from an aliased Product.
+
+    Same logic as _db_name_fully_cleaned() but operates on an aliased() model
+    for use in self-joins (e.g. rankings cross-chain matching).
+    """
+    brand_stripped = case(
+        (
+            and_(product_alias.brand.is_not(None), product_alias.brand != ""),
+            func.replace(
+                func.lower(product_alias.name),
+                func.lower(product_alias.brand),
+                "",
+            ),
+        ),
+        else_=func.lower(product_alias.name),
+    )
+    size_stripped = func.regexp_replace(brand_stripped, _SQL_SIZE_PATTERN, "", "gi")
+    return func.trim(func.regexp_replace(size_stripped, r"\s+", " ", "g"))
+
+
+def _sql_normalize_size(size_col):
+    """SQL expression that normalizes a size column for comparison.
+
+    Lowercases and replaces common unit aliases so that '500 Grams' matches '500g'.
+    """
+    s = func.lower(func.coalesce(size_col, ""))
+    # Replace long unit names with abbreviations
+    for long, short in (
+        ("litres", "l"), ("litre", "l"), ("liters", "l"), ("liter", "l"),
+        ("millilitres", "ml"), ("millilitre", "ml"), ("milliliters", "ml"), ("milliliter", "ml"),
+        ("kilograms", "kg"), ("kilogram", "kg"),
+        ("grams", "g"), ("gram", "g"),
+        ("pack", "pk"),
+        ("each", "ea"),
+    ):
+        s = func.replace(s, long, short)
+    # Strip spaces between number and unit (e.g. "500 g" -> "500g")
+    s = func.regexp_replace(s, r"(\d)\s+(g|kg|ml|l|pk|ea)\M", r"\1\2", "gi")
+    return func.trim(s)
+
+
 async def find_cross_chain_matches(
     session: AsyncSession,
     *,
@@ -114,13 +183,21 @@ async def find_cross_chain_matches(
     product_brand: Optional[str],
     product_size: Optional[str],
     product_department: Optional[str] = None,
+    product_subcategory: Optional[str] = None,
+    source_embedding: Optional[list] = None,
     target_chains: list[str],
     store_ids: list[UUID],
+    product_volume_ml: Optional[float] = None,
+    product_weight_g: Optional[float] = None,
+    product_pack_count: Optional[int] = None,
 ) -> dict[str, list[dict]]:
     """Find best matching products in target chains using pg_trgm similarity.
 
     Strips brand from both sides so similarity focuses on the product type,
     then boosts same-brand matches to prefer the exact same product.
+    When source_embedding is provided, blends vector similarity with trigram.
+    When structured size fields are available, uses numeric comparison as a
+    hard filter instead of string-based size matching.
 
     Returns dict mapping chain -> list of candidate matches (up to 3 per chain),
     each with keys: product_id, name, brand, size, similarity.
@@ -128,15 +205,13 @@ async def find_cross_chain_matches(
     if not target_chains or not store_ids:
         return {}
 
-    # Strip brand from search name
-    search_name = _strip_brand_prefix(product_name, product_brand)
+    # Strip brand + embedded sizes from search name (mirrors DB-side cleaning)
+    search_name = _clean_search_name(product_name, product_brand)
     norm_size = normalize_size(product_size)
-    search_text = f"{search_name} {norm_size}".strip().lower()
 
-    # Strip brand from DB-side product names too
-    db_name_clean = _db_name_cleaned()
-    db_text = func.concat(db_name_clean, " ", func.lower(func.coalesce(Product.size, "")))
-    sim = func.similarity(db_text, search_text)
+    # Similarity on cleaned name only — no size dilution
+    db_name_clean = _db_name_fully_cleaned()
+    sim = func.similarity(db_name_clean, search_name)
 
     # Only match products that have prices in nearby stores
     has_price_in_stores = (
@@ -149,33 +224,106 @@ async def find_cross_chain_matches(
     conditions = [
         Product.chain.in_(target_chains),
         Product.id != product_id,
-        sim >= 0.25,
+        sim >= 0.2,
         has_price_in_stores,
     ]
 
-    # Department boost (not a hard filter — departments may be NULL across chains)
-    dept_boost = 0.0
-    if product_department:
-        dept_boost = case(
-            (Product.department == product_department, 0.2),
+    # --- Structured size filter ---
+    # When the source product has numeric size data, require candidates to
+    # match within 2% tolerance OR have NULL structured fields (un-backfilled).
+    TOLERANCE = 0.02
+    has_structured_size = product_volume_ml is not None or product_weight_g is not None
+
+    if product_volume_ml is not None:
+        conditions.append(or_(
+            Product.volume_ml.is_(None),  # allow un-backfilled rows through
+            func.abs(Product.volume_ml - product_volume_ml) / func.greatest(product_volume_ml, 0.01) <= TOLERANCE,
+        ))
+    if product_weight_g is not None:
+        conditions.append(or_(
+            Product.weight_g.is_(None),  # allow un-backfilled rows through
+            func.abs(Product.weight_g - product_weight_g) / func.greatest(product_weight_g, 0.01) <= TOLERANCE,
+        ))
+    if product_pack_count is not None:
+        conditions.append(or_(
+            Product.pack_count.is_(None),
+            Product.pack_count == product_pack_count,
+        ))
+
+    # Size boost: only used as fallback when structured data is not available
+    size_boost = 0.0
+    if not has_structured_size and norm_size:
+        db_norm_size = _sql_normalize_size(Product.size)
+        size_boost = case(
+            (db_norm_size == norm_size, 0.15),  # exact normalized match
+            (func.strpos(db_norm_size, norm_size) > 0, 0.1),  # substring (multipack)
             else_=0.0,
         )
 
-    # Boost same-brand matches — prefer exact same product across chains
-    brand_boost = 0.0
-    if product_brand:
-        brand_boost = case(
+    # Department match/mismatch scoring (not a hard filter — departments may be NULL)
+    dept_boost = 0.0
+    if product_department:
+        dept_boost = case(
+            (Product.department == product_department, 0.4),
+            (Product.department.is_(None), 0.0),
+            else_=-0.15,  # penalty for different department
+        )
+
+    # Subcategory boost — tighter product type matching when available
+    subcat_boost = 0.0
+    if product_subcategory:
+        subcat_boost = case(
             (
-                and_(
-                    Product.brand.is_not(None),
-                    func.lower(Product.brand) == product_brand.lower(),
-                ),
-                0.15,
+                func.lower(func.coalesce(Product.subcategory, "")) == product_subcategory.lower(),
+                0.25,
             ),
             else_=0.0,
         )
 
-    score = (sim + dept_boost + brand_boost).label("score")
+    # Brand boost — supports own-brand equivalence via normalized_brand
+    brand_boost = 0.0
+    if product_brand:
+        from app.services.normalizer import normalize_brand, OWN_BRAND_GROUPS, _BRAND_TO_GROUP
+
+        norm_src_brand = normalize_brand(product_brand)
+        src_group = _BRAND_TO_GROUP.get(norm_src_brand)
+
+        if src_group is not None:
+            # Source is an own-brand — match any brand in the same group
+            group_brands = list(OWN_BRAND_GROUPS[src_group])
+            brand_boost = case(
+                (
+                    func.lower(func.coalesce(Product.normalized_brand, "")).in_(group_brands),
+                    0.15,
+                ),
+                (
+                    and_(
+                        Product.brand.is_not(None),
+                        func.lower(Product.brand) == norm_src_brand,
+                    ),
+                    0.15,
+                ),
+                else_=0.0,
+            )
+        else:
+            # Regular brand — exact match
+            brand_boost = case(
+                (
+                    and_(
+                        Product.brand.is_not(None),
+                        func.lower(Product.brand) == norm_src_brand,
+                    ),
+                    0.15,
+                ),
+                else_=0.0,
+            )
+
+    # When source embedding is available, blend vector similarity with trigram
+    if source_embedding is not None and hasattr(Product, "embedding"):
+        vector_sim = (1 - Product.embedding.cosine_distance(source_embedding))
+        score = (vector_sim * 0.5 + sim * 0.2 + dept_boost + subcat_boost + brand_boost + size_boost).label("score")
+    else:
+        score = (sim + dept_boost + subcat_boost + brand_boost + size_boost).label("score")
 
     query = (
         select(
@@ -217,9 +365,13 @@ async def find_store_suggestions(
     product_size: Optional[str],
     product_department: Optional[str] = None,
     product_subcategory: Optional[str] = None,
+    source_embedding: Optional[list] = None,
     source_product_id: Optional[UUID] = None,
     store_id: UUID,
     limit: int = 3,
+    product_volume_ml: Optional[float] = None,
+    product_weight_g: Optional[float] = None,
+    product_pack_count: Optional[int] = None,
 ) -> list[dict]:
     """Find similar products at a specific store, focused on product type.
 
@@ -229,7 +381,8 @@ async def find_store_suggestions(
     - Matches on product name only (no size in similarity text).
     - Department and subcategory are BOOSTS, not hard filters, because
       different chains may have NULL or differently-named departments.
-    - Size is a boost to prefer same-size alternatives.
+    - Size is a boost to prefer same-size alternatives (or hard filter when
+      structured data is available).
 
     Returns list of candidates with keys: product_id, name, brand, size,
     image_url, price_nzd, promo_price_nzd, similarity.
@@ -237,8 +390,8 @@ async def find_store_suggestions(
     # Strip ALL brand occurrences + size patterns from search name
     search_name = _clean_search_name(product_name, product_brand)
 
-    # Strip ALL brand occurrences from DB-side product names
-    db_name_clean = _db_name_cleaned()
+    # Strip ALL brand occurrences + embedded sizes from DB-side names
+    db_name_clean = _db_name_fully_cleaned()
 
     # Similarity on cleaned name only (no size) — focuses on product type
     sim = func.similarity(db_name_clean, search_name)
@@ -252,12 +405,13 @@ async def find_store_suggestions(
     if source_product_id:
         conditions.append(Product.id != source_product_id)
 
-    # Department boost (NOT a hard filter — PAK'nSAVE has NULL departments)
+    # Department match/mismatch scoring (NOT a hard filter — PAK'nSAVE has NULL departments)
     dept_boost = 0.0
     if product_department:
         dept_boost = case(
             (Product.department == product_department, 0.3),
-            else_=0.0,
+            (Product.department.is_(None), 0.0),
+            else_=-0.15,  # penalty for different department
         )
 
     # Subcategory boost — tighter product type matching when available
@@ -271,16 +425,45 @@ async def find_store_suggestions(
             else_=0.0,
         )
 
-    # Size preference boost — prefer same size but show different sizes too
+    # Size: use structured numeric comparison when available, string fallback otherwise
     size_boost = 0.0
-    norm_size = normalize_size(product_size)
-    if norm_size:
-        size_boost = case(
-            (func.strpos(func.lower(func.coalesce(Product.size, "")), norm_size) > 0, 0.1),
-            else_=0.0,
-        )
+    has_structured_size = product_volume_ml is not None or product_weight_g is not None
 
-    score = (sim + dept_boost + subcat_boost + size_boost).label("score")
+    if has_structured_size:
+        # Boost same-size products using numeric comparison
+        TOLERANCE = 0.02
+        if product_volume_ml is not None:
+            size_boost = case(
+                (Product.volume_ml.is_(None), 0.0),
+                (
+                    func.abs(Product.volume_ml - product_volume_ml) / func.greatest(product_volume_ml, 0.01) <= TOLERANCE,
+                    0.15,
+                ),
+                else_=0.0,
+            )
+        elif product_weight_g is not None:
+            size_boost = case(
+                (Product.weight_g.is_(None), 0.0),
+                (
+                    func.abs(Product.weight_g - product_weight_g) / func.greatest(product_weight_g, 0.01) <= TOLERANCE,
+                    0.15,
+                ),
+                else_=0.0,
+            )
+    else:
+        norm_size = normalize_size(product_size)
+        if norm_size:
+            size_boost = case(
+                (func.strpos(func.lower(func.coalesce(Product.size, "")), norm_size) > 0, 0.1),
+                else_=0.0,
+            )
+
+    # When source embedding is available, blend vector similarity with trigram
+    if source_embedding is not None and hasattr(Product, "embedding"):
+        vector_sim = (1 - Product.embedding.cosine_distance(source_embedding))
+        score = (vector_sim * 0.5 + sim * 0.2 + dept_boost + subcat_boost + size_boost).label("score")
+    else:
+        score = (sim + dept_boost + subcat_boost + size_boost).label("score")
 
     query = (
         select(
@@ -315,4 +498,11 @@ async def find_store_suggestions(
     ]
 
 
-__all__ = ["normalize_size", "find_cross_chain_matches", "find_store_suggestions"]
+__all__ = [
+    "normalize_size",
+    "find_cross_chain_matches",
+    "find_store_suggestions",
+    "_clean_search_name",
+    "_aliased_name_fully_cleaned",
+    "_sql_normalize_size",
+]

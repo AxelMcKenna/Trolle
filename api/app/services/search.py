@@ -68,7 +68,7 @@ async def _get_store_ids_within_radius(
         result = await session.execute(query)
         return [str(store_id) for store_id in result.scalars().all()]
 
-    cached_ids = await cached_json(cache_key, settings.api_cache_ttl_seconds, producer)
+    cached_ids = await cached_json(cache_key, settings.cache_ttl_stores_nearby, producer)
     return [UUID(store_id) for store_id in cached_ids]
 
 
@@ -79,20 +79,23 @@ def _build_sort_order(
     unit_price_sort: Any,
     effective_price: Any,
     distance_m: Any | None,
+    relevance: Any | None = None,
 ) -> list[Any]:
     tie_breakers = [Price.price_last_changed_at.desc(), Product.name.asc(), Price.id.asc()]
+    # When a search query is active, prepend relevance as primary/tiebreaker
+    relevance_prefix = [relevance.desc().nulls_last()] if relevance is not None else []
     if sort == "discount":
-        return [discount_ratio.desc().nulls_last(), *tie_breakers]
+        return [discount_ratio.desc().nulls_last(), *relevance_prefix, *tie_breakers]
     if sort == "unit_price":
-        return [unit_price_sort.asc().nulls_last(), *tie_breakers]
+        return [unit_price_sort.asc().nulls_last(), *relevance_prefix, *tie_breakers]
     if sort == "total_price":
-        return [effective_price.asc().nulls_last(), *tie_breakers]
+        return [*relevance_prefix, effective_price.asc().nulls_last(), *tie_breakers]
     if sort == "newest":
-        return [Price.price_last_changed_at.desc(), Product.name.asc(), Price.id.asc()]
+        return [Price.price_last_changed_at.desc(), *relevance_prefix, Product.name.asc(), Price.id.asc()]
     if sort == "distance" and distance_m is not None:
-        return [distance_m.asc().nulls_last(), *tie_breakers]
-    # Default: sort by effective price
-    return [effective_price.asc().nulls_last(), *tie_breakers]
+        return [distance_m.asc().nulls_last(), *relevance_prefix, *tie_breakers]
+    # Default: relevance first (if searching), then effective price
+    return [*relevance_prefix, effective_price.asc().nulls_last(), *tie_breakers]
 
 
 async def fetch_products(
@@ -118,6 +121,7 @@ async def fetch_products(
         user_point_geog = cast(user_point, Geography)
         filters.append(Store.id.in_(nearby_store_ids))
 
+    relevance = None
     if params.q:
         pattern = f"%{params.q.lower()}%"
         filters.append(
@@ -126,6 +130,33 @@ async def fetch_products(
                 func.lower(Product.brand).like(pattern),
             )
         )
+        # Category-aware relevance scoring: boost products whose department or
+        # subcategory matches the query term, so "chicken" in Meat & Seafood
+        # ranks above "chicken" in Chips & Snacks.
+        q_lower = params.q.lower()
+        q_pattern = f"%{q_lower}%"
+        category_relevance = case(
+            (func.lower(func.coalesce(Product.subcategory, "")).like(q_pattern), 0.4),
+            (func.lower(func.coalesce(Product.department, "")).like(q_pattern), 0.3),
+            else_=0.0,
+        )
+
+        # Hybrid: blend vector similarity with category relevance when embeddings available
+        vector_sim = None
+        if settings.embedding_enabled:
+            from app.services.embeddings import embed_texts
+
+            query_embedding = embed_texts([params.q])
+            if query_embedding and Product.__table__.columns.get("embedding") is not None:
+                from app.db.models import Product as ProductModel
+
+                # cosine_distance returns distance (0=identical), convert to similarity
+                vector_sim = (1 - ProductModel.embedding.cosine_distance(query_embedding[0]))
+
+        if vector_sim is not None:
+            relevance = (vector_sim * 0.7 + category_relevance * 0.3).label("relevance")
+        else:
+            relevance = category_relevance.label("relevance")
     if params.chain:
         filters.append(Product.chain.in_(params.chain))
     if params.store:
@@ -146,12 +177,16 @@ async def fetch_products(
         )
     # Only count a promo as valid if promo_ends_at is NULL or in the future
     now_ts = func.now()
+    promo_conditions = [
+        Price.promo_price_nzd.is_not(None),
+        or_(Price.promo_ends_at.is_(None), Price.promo_ends_at > now_ts),
+    ]
+    # When member_prices=False, exclude member-only promos from effective price
+    if not params.member_prices:
+        promo_conditions.append(Price.is_member_only == False)  # noqa: E712
     valid_promo = case(
         (
-            and_(
-                Price.promo_price_nzd.is_not(None),
-                or_(Price.promo_ends_at.is_(None), Price.promo_ends_at > now_ts),
-            ),
+            and_(*promo_conditions),
             Price.promo_price_nzd,
         ),
         else_=None,
@@ -185,6 +220,7 @@ async def fetch_products(
         unit_price_sort=unit_price_sort,
         effective_price=effective_price,
         distance_m=distance_m,
+        relevance=relevance,
     )
 
     if params.unique_products:

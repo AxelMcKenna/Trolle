@@ -3,7 +3,10 @@ Simple scraper to inspect Countdown store locator page structure.
 """
 import asyncio
 import json
+import logging
 from playwright.async_api import async_playwright
+
+logger = logging.getLogger(__name__)
 
 
 async def inspect_page():
@@ -13,22 +16,20 @@ async def inspect_page():
         browser = await p.chromium.launch(headless=False)
         page = await browser.new_page()
 
-        print("Loading page...")
+        logger.info("Loading page...")
         await page.goto('https://www.woolworths.co.nz/store-finder', timeout=30000)
 
         await asyncio.sleep(5)
 
-        print("\n" + "="*60)
-        print("PAGE TITLE:", await page.title())
-        print("PAGE URL:", page.url)
-        print("="*60)
+        logger.info("PAGE TITLE: %s", await page.title())
+        logger.info("PAGE URL: %s", page.url)
 
         # Get page HTML to inspect
         html = await page.content()
-        print(f"\nPage HTML length: {len(html)} chars")
+        logger.info("Page HTML length: %d chars", len(html))
 
         # Look for store-related data
-        print("\nSearching for store data...")
+        logger.info("Searching for store data...")
 
         # Check window object
         window_data = await page.evaluate('''() => {
@@ -39,7 +40,7 @@ async def inspect_page():
             );
             return keys;
         }''')
-        print(f"\nWindow keys with 'store/location/__': {window_data}")
+        logger.info("Window keys with 'store/location/__': %s", window_data)
 
         # Check for Next.js data
         next_data = await page.evaluate('''() => {
@@ -49,9 +50,9 @@ async def inspect_page():
         }''')
 
         if next_data:
-            print("\n✓ Found __NEXT_DATA__!")
-            print("Keys:", list(next_data.keys()) if isinstance(next_data, dict) else type(next_data))
-            print(json.dumps(next_data, indent=2)[:1000])
+            logger.info("Found __NEXT_DATA__!")
+            logger.info("Keys: %s", list(next_data.keys()) if isinstance(next_data, dict) else type(next_data))
+            logger.debug("Data: %s", json.dumps(next_data, indent=2)[:1000])
 
         # Look for React/API data in scripts
         script_data = await page.evaluate('''() => {
@@ -71,14 +72,12 @@ async def inspect_page():
         }''')
 
         if script_data:
-            print(f"\n✓ Found {len(script_data)} scripts with store-related content:")
+            logger.info("Found %d scripts with store-related content:", len(script_data))
             for i, script in enumerate(script_data[:3]):
-                print(f"\n  Script {i+1}:")
-                print(f"    Src: {script['src']}")
-                print(f"    Preview: {script['preview'][:150]}...")
+                logger.info("  Script %d: Src=%s Preview=%s", i+1, script['src'], script['preview'][:150])
 
         # Check page structure
-        print("\nChecking page structure for store UI elements...")
+        logger.info("Checking page structure for store UI elements...")
         structure = await page.evaluate('''() => {
             return {
                 hasInput: !!document.querySelector('input[type="text"], input[placeholder*="ubur"], input[placeholder*="ocation"]'),
@@ -89,13 +88,10 @@ async def inspect_page():
             };
         }''')
 
-        print(json.dumps(structure, indent=2))
+        logger.info("Structure: %s", json.dumps(structure, indent=2))
 
         # Keep browser open for manual inspection
-        print("\n" + "="*60)
-        print("Browser will stay open for 60 seconds.")
-        print("Manually inspect the page to see how stores are loaded.")
-        print("="*60)
+        logger.info("Browser will stay open for 60 seconds. Manually inspect the page to see how stores are loaded.")
 
         await asyncio.sleep(60)
         await browser.close()

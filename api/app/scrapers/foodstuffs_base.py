@@ -10,7 +10,7 @@ import logging
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import List, Optional
+from typing import AsyncIterator, List, Optional
 
 import httpx
 from sqlalchemy import select
@@ -19,8 +19,20 @@ from app.db.models import IngestionRun, Store
 from app.db.session import async_transaction, get_async_session
 from app.scrapers.base import Scraper
 from app.scrapers.api_auth_base import APIAuthBase
+from app.services.normalizer import (
+    clean_product_name,
+    extract_size_from_text,
+    normalize_brand,
+    parse_structured_size,
+)
+from app.workers.retry import retry_with_backoff
 
 logger = logging.getLogger(__name__)
+
+# Concurrency controls
+CATEGORY_CONCURRENCY = 3   # max concurrent category fetches per store
+PERSIST_BATCH_SIZE = 200    # products per DB upsert batch
+INTER_STORE_DELAY = 0.5     # seconds between stores
 
 
 class FoodstuffsAPIScraper(Scraper, APIAuthBase):
@@ -214,6 +226,8 @@ class FoodstuffsAPIScraper(Scraper, APIAuthBase):
         self.scrape_all_stores = scrape_all_stores
         self.store_list = self._load_store_list() if scrape_all_stores else []
         self._token_obtained_at: float = 0
+        self._http: Optional[httpx.AsyncClient] = None
+        self._token_lock = asyncio.Lock()
 
     async def _load_store_list_from_db(self) -> List[dict]:
         """Load store API IDs for this chain from database (source of truth)."""
@@ -314,14 +328,28 @@ class FoodstuffsAPIScraper(Scraper, APIAuthBase):
             logger.warning(f"{self.chain}: direct token request failed: {e}")
             return None
 
+    def _get_http_client(self) -> httpx.AsyncClient:
+        """Return a shared HTTP client, creating one if needed."""
+        if self._http is None or self._http.is_closed:
+            self._http = httpx.AsyncClient(timeout=30.0)
+        return self._http
+
+    async def _close_http_client(self) -> None:
+        """Close the shared HTTP client."""
+        if self._http and not self._http.is_closed:
+            await self._http.aclose()
+            self._http = None
+
     async def _fetch_category(
         self,
         level0: str,
         level1: str,
         page: int = 0,
-        hits_per_page: int = 50
+        hits_per_page: int = 50,
+        store_id: Optional[str] = None,
     ) -> dict:
         """Fetch products for a specific category using the API."""
+        sid = store_id or self.store_id
         domain = self.site_url.split("//")[-1].split("/")[0]
 
         headers = {
@@ -356,21 +384,21 @@ class FoodstuffsAPIScraper(Scraper, APIAuthBase):
                     "productFacets",
                     "tobacco"
                 ],
-                "filters": f'stores:{self.store_id} AND category0NI:"{level0}" AND category1NI:"{level1}"',
+                "filters": f'stores:{sid} AND category0NI:"{level0}" AND category1NI:"{level1}"',
                 "hitsPerPage": hits_per_page,
                 "page": page,
             },
-            "storeId": self.store_id,
+            "storeId": sid,
             "hitsPerPage": hits_per_page,
             "page": page,
             "sortOrder": "NI_POPULARITY_ASC",
             "tobaccoQuery": False,
         }
 
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            response = await client.post(self.api_url, headers=headers, json=payload)
-            response.raise_for_status()
-            return response.json()
+        client = self._get_http_client()
+        response = await client.post(self.api_url, headers=headers, json=payload)
+        response.raise_for_status()
+        return response.json()
 
     async def _probe_cookie_only_access(self) -> bool:
         """Check whether API access works without bearer token using session cookies only."""
@@ -459,8 +487,12 @@ class FoodstuffsAPIScraper(Scraper, APIAuthBase):
                 category = level0
                 subcategory = level1
 
-        # Extract size from product data
-        size_value = product_data.get("displayName", "") or ""
+        # Extract size from displayName (not the raw displayName — just the size portion)
+        raw_display = product_data.get("displayName", "") or ""
+        size_value = extract_size_from_text(raw_display) or extract_size_from_text(full_name)
+
+        # Parse structured size fields for numeric matching
+        structured = parse_structured_size(size_value or full_name)
 
         # Extract unit pricing (cupPrice/cupMeasure from Foodstuffs API)
         cup_price = product_data.get("cupPrice")
@@ -491,6 +523,11 @@ class FoodstuffsAPIScraper(Scraper, APIAuthBase):
             size=size_value or None,
             unit_price=unit_price,
             unit_measure=unit_measure,
+            volume_ml=structured.volume_ml,
+            weight_g=structured.weight_g,
+            pack_count=structured.pack_count,
+            normalized_name=clean_product_name(full_name, brand),
+            normalized_brand=normalize_brand(brand) if brand else None,
         )
 
     async def fetch_catalog_pages(self) -> List[str]:
@@ -606,20 +643,28 @@ class FoodstuffsAPIScraper(Scraper, APIAuthBase):
         return self._token_age_seconds() >= (self.TOKEN_TTL_SECONDS - self.TOKEN_REFRESH_BUFFER_SECONDS)
 
     async def _refresh_token_if_needed(self) -> bool:
-        """Refresh the auth token if it's close to expiry. Returns True if token is valid."""
+        """Refresh the auth token if it's close to expiry. Returns True if token is valid.
+
+        Uses a lock to prevent concurrent refresh attempts from racing.
+        """
         if not self._token_needs_refresh():
             return True
 
-        age = self._token_age_seconds()
-        logger.info(f"{self.chain}: token is {age:.0f}s old (limit {self.TOKEN_TTL_SECONDS}s), refreshing...")
-        self.auth_token = await self._get_auth_token()
-        if self.auth_token:
-            self._token_obtained_at = time.monotonic()
-            logger.info(f"{self.chain}: token refreshed successfully")
-            return True
+        async with self._token_lock:
+            # Re-check after acquiring lock (another coroutine may have refreshed)
+            if not self._token_needs_refresh():
+                return True
 
-        logger.error(f"{self.chain}: token refresh failed")
-        return False
+            age = self._token_age_seconds()
+            logger.info(f"{self.chain}: token is {age:.0f}s old (limit {self.TOKEN_TTL_SECONDS}s), refreshing...")
+            self.auth_token = await self._get_auth_token()
+            if self.auth_token:
+                self._token_obtained_at = time.monotonic()
+                logger.info(f"{self.chain}: token refreshed successfully")
+                return True
+
+            logger.error(f"{self.chain}: token refresh failed")
+            return False
 
     async def _validate_auth(self) -> bool:
         """Validate that the auth token is still valid by making a lightweight API call."""
@@ -635,8 +680,8 @@ class FoodstuffsAPIScraper(Scraper, APIAuthBase):
             logger.warning(f"{self.chain}: auth validation failed: {e}")
             return False
 
-    async def scrape(self) -> List[dict]:
-        """Scrape all products using the Foodstuffs API."""
+    async def _ensure_auth(self) -> bool:
+        """Ensure we have a valid auth token, obtaining one if needed."""
         if not self.auth_token:
             self.auth_token = await self._get_auth_token()
             if not self.auth_token:
@@ -644,103 +689,246 @@ class FoodstuffsAPIScraper(Scraper, APIAuthBase):
                     f"Unable to authenticate {self.chain}: "
                     "both direct HTTP and browser token capture failed"
                 )
-                return []
+                return False
             self._token_obtained_at = time.monotonic()
 
-        # Validate auth before full scrape
         if not await self._validate_auth():
             logger.warning(f"{self.chain}: stale token detected, refreshing...")
             self.auth_token = await self._get_auth_token()
             if not self.auth_token or not await self._validate_auth():
                 logger.error(f"{self.chain}: auth validation failed after refresh")
-                return []
+                return False
             self._token_obtained_at = time.monotonic()
 
-        all_products: List[dict] = []
+        return True
 
-        # Determine which stores to scrape
-        stores_to_scrape = []
-        if self.scrape_all_stores:
-            db_stores = await self._load_store_list_from_db()
-            if db_stores:
-                stores_to_scrape = db_stores
-                logger.info(f"Scraping all {len(stores_to_scrape)} {self.chain} stores from database")
-            elif self.store_list:
-                stores_to_scrape = self.store_list
-                logger.info(f"Scraping all {len(stores_to_scrape)} {self.chain} stores from JSON fallback")
-            else:
-                stores_to_scrape = [{"id": self.default_store_id, "name": "Default Store"}]
-                logger.warning(f"No {self.chain} store list found in DB/JSON; scraping default store only")
-        else:
-            stores_to_scrape = [{"id": self.default_store_id, "name": "Default Store"}]
+    def _resolve_stores(self) -> List[dict]:
+        """Synchronous helper to determine the store list to scrape."""
+        if not self.scrape_all_stores:
+            return [{"id": self.default_store_id, "name": "Default Store"}]
+        if self.store_list:
+            return self.store_list
+        return [{"id": self.default_store_id, "name": "Default Store"}]
+
+    async def _resolve_stores_async(self) -> List[dict]:
+        """Determine the store list, preferring DB, falling back to JSON."""
+        if not self.scrape_all_stores:
             logger.info("Scraping single store (default)")
+            return [{"id": self.default_store_id, "name": "Default Store"}]
 
-        # Scrape each store
+        db_stores = await self._load_store_list_from_db()
+        if db_stores:
+            logger.info(f"Scraping all {len(db_stores)} {self.chain} stores from database")
+            return db_stores
+        if self.store_list:
+            logger.info(f"Scraping all {len(self.store_list)} {self.chain} stores from JSON fallback")
+            return self.store_list
+
+        logger.warning(f"No {self.chain} store list found in DB/JSON; scraping default store only")
+        return [{"id": self.default_store_id, "name": "Default Store"}]
+
+    async def _scrape_category(
+        self,
+        sem: asyncio.Semaphore,
+        level0: str,
+        level1: str,
+        store_id: str,
+    ) -> List[dict]:
+        """Fetch all pages for a single category, gated by semaphore."""
+        async with sem:
+            products: List[dict] = []
+            try:
+                response = await retry_with_backoff(
+                    lambda: self._fetch_category(level0, level1, page=0, store_id=store_id),
+                    max_retries=3,
+                    base_delay=5.0,
+                    label=f"{self.chain} {level0}/{level1}",
+                )
+                products_data = response.get("products", [])
+                total_products = response.get("totalProducts", len(products_data))
+
+                for pd in products_data:
+                    try:
+                        products.append(self._parse_product(pd, level0, level1))
+                    except Exception as e:
+                        logger.error(f"Error parsing product: {e}")
+
+                # Paginate remaining pages (sequential within this category)
+                hits_per_page = 50
+                total_pages = (total_products + hits_per_page - 1) // hits_per_page
+
+                for page_num in range(1, total_pages):
+                    response = await retry_with_backoff(
+                        lambda _p=page_num: self._fetch_category(
+                            level0, level1, page=_p, store_id=store_id
+                        ),
+                        max_retries=3,
+                        base_delay=5.0,
+                        label=f"{self.chain} {level1} p{page_num + 1}",
+                    )
+                    for pd in response.get("products", []):
+                        try:
+                            products.append(self._parse_product(pd, level0, level1))
+                        except Exception as e:
+                            logger.error(f"Error parsing product: {e}")
+                    await asyncio.sleep(0.3)
+
+            except Exception as e:
+                logger.error(f"Error scraping category {level1}: {e}")
+
+            await asyncio.sleep(0.2)
+            return products
+
+    async def _scrape_by_store(self) -> AsyncIterator[tuple[str, List[dict]]]:
+        """Async generator that yields (store_api_id, products) per store.
+
+        Categories within each store are fetched concurrently (up to
+        CATEGORY_CONCURRENCY at a time).
+        """
+        if not await self._ensure_auth():
+            return
+
+        stores_to_scrape = await self._resolve_stores_async()
+        sem = asyncio.Semaphore(CATEGORY_CONCURRENCY)
+
         for store_idx, store in enumerate(stores_to_scrape, 1):
             store_id = store["id"]
             store_name = store.get("name", store_id)
 
-            # Proactively refresh token before it expires
             if not await self._refresh_token_if_needed():
                 logger.error(f"{self.chain}: cannot continue without valid token, stopping at store {store_idx}")
                 break
 
             logger.info(f"[{store_idx}/{len(stores_to_scrape)}] Scraping store: {store_name}")
-            self.store_id = store_id
 
-            # Scrape each category for this store
-            for level0, level1 in self.categories:
-                logger.info(f"  Category: {level0} > {level1}")
+            # Fetch all categories concurrently for this store
+            tasks = [
+                self._scrape_category(sem, l0, l1, store_id)
+                for l0, l1 in self.categories
+            ]
+            results = await asyncio.gather(*tasks, return_exceptions=True)
 
-                try:
-                    response = await self._fetch_category(level0, level1, page=0)
-                    products_data = response.get("products", [])
-                    total_products = response.get("totalProducts", len(products_data))
+            store_products: List[dict] = []
+            for result in results:
+                if isinstance(result, Exception):
+                    logger.error(f"Category task failed for store {store_name}: {result}")
+                    continue
+                for p in result:
+                    p["store_id"] = store_id
+                    p["store_name"] = store_name
+                    store_products.append(p)
 
-                    logger.info(f"  Found {total_products} products in {level1}")
+            logger.info(f"  Store {store_name}: {len(store_products)} products")
+            yield store_id, store_products
 
-                    for product_data in products_data:
-                        try:
-                            product = self._parse_product(product_data, level0, level1)
-                            product["store_id"] = store_id
-                            product["store_name"] = store_name
-                            all_products.append(product)
-                        except Exception as e:
-                            logger.error(f"Error parsing product: {e}")
+            if store_idx < len(stores_to_scrape):
+                await asyncio.sleep(INTER_STORE_DELAY)
 
-                    # Fetch remaining pages if needed
-                    hits_per_page = 50
-                    total_pages = (total_products + hits_per_page - 1) // hits_per_page
+    async def scrape(self) -> List[dict]:
+        """Scrape all products (backward-compatible flat list).
 
-                    for page_num in range(1, total_pages):
-                        logger.info(f"  Fetching page {page_num + 1}/{total_pages} for {level1}")
+        For production use, prefer run() which streams per-store and
+        persists in batches.
+        """
+        all_products: List[dict] = []
+        async for _store_id, products in self._scrape_by_store():
+            all_products.extend(products)
+        logger.info(f"Successfully scraped {len(all_products)} products from {self.chain}")
+        return all_products
 
-                        response = await self._fetch_category(level0, level1, page=page_num)
-                        products_data = response.get("products", [])
+    async def run(self) -> IngestionRun:
+        """Run the scraper with batch persistence per store."""
+        self._run_started_at = datetime.utcnow()
 
-                        for product_data in products_data:
-                            try:
-                                product = self._parse_product(product_data, level0, level1)
-                                product["store_id"] = store_id
-                                product["store_name"] = store_name
-                                all_products.append(product)
-                            except Exception as e:
-                                logger.error(f"Error parsing product: {e}")
+        run = IngestionRun(
+            chain=self.chain,
+            status="running",
+            started_at=self._run_started_at,
+        )
 
-                        await asyncio.sleep(0.5)
+        async with async_transaction() as session:
+            session.add(run)
+            await session.flush()
 
-                except Exception as e:
-                    logger.error(f"Error scraping category {level1}: {e}")
+        try:
+            # Pre-load store map once (api_id -> Store)
+            async with async_transaction() as session:
+                result = await session.execute(
+                    select(Store).where(Store.chain == self.chain)
+                )
+                store_map = {s.api_id: s for s in result.scalars().all()}
+
+            total_items = 0
+            changed_items = 0
+            failed_items = 0
+            seen_store_ids: set = set()
+
+            async for store_api_id, products in self._scrape_by_store():
+                store = store_map.get(store_api_id)
+                if not store:
+                    logger.debug(f"Store not found in DB for api_id={store_api_id}, skipping")
+                    failed_items += len(products)
                     continue
 
-                await asyncio.sleep(0.3)
+                seen_store_ids.add(store.id)
+                total_items += len(products)
 
-            # Delay between stores to avoid rate limiting
-            if store_idx < len(stores_to_scrape):
-                await asyncio.sleep(2)
+                # Batch upsert (same pattern as Countdown's _persist_per_store)
+                for batch_start in range(0, len(products), PERSIST_BATCH_SIZE):
+                    batch = products[batch_start: batch_start + PERSIST_BATCH_SIZE]
+                    try:
+                        async with async_transaction() as session:
+                            batch_changed = await self._upsert_products_batch(
+                                session, batch, [store]
+                            )
+                        changed_items += batch_changed
+                    except Exception as e:
+                        logger.error(f"Failed batch for store {store.name}: {e}")
+                        failed_items += len(batch)
 
-        logger.info(f"Successfully scraped {len(all_products)} products from {self.chain} ({len(stores_to_scrape)} stores)")
-        return all_products
+            # Sweep stale promos for each store we scraped
+            if self._run_started_at and seen_store_ids:
+                try:
+                    from app.services.freshness import sweep_store_promos
+
+                    async with async_transaction() as session:
+                        for sid in seen_store_ids:
+                            await sweep_store_promos(session, sid, self._run_started_at)
+                except Exception as e:
+                    logger.warning(f"Per-store promo sweep failed for chain={self.chain}: {e}")
+
+            failure_rate = failed_items / total_items if total_items > 0 else 0.0
+            status = "completed_with_errors" if failure_rate > 0.2 else "completed"
+
+            async with async_transaction() as session:
+                result = await session.execute(
+                    select(IngestionRun).where(IngestionRun.id == run.id)
+                )
+                run = result.scalar_one()
+                run.status = status
+                run.finished_at = datetime.utcnow()
+                run.items_total = total_items
+                run.items_changed = changed_items
+                run.items_failed = failed_items
+
+            logger.info(
+                f"Scraper completed: {total_items} items, "
+                f"{changed_items} changed, {failed_items} failed"
+            )
+            return run
+
+        except Exception as e:
+            logger.error(f"Scraper failed: {e}")
+            async with async_transaction() as session:
+                result = await session.execute(
+                    select(IngestionRun).where(IngestionRun.id == run.id)
+                )
+                run = result.scalar_one()
+                run.status = "failed"
+                run.finished_at = datetime.utcnow()
+            raise
+        finally:
+            await self._close_http_client()
 
 
 __all__ = ["FoodstuffsAPIScraper"]
