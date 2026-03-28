@@ -1,4 +1,4 @@
-import { lazy, Suspense, useState } from "react";
+import { lazy, Suspense, useState, useEffect, useRef } from "react";
 import { ExternalLink, Store, Clock, Package, MapPin, ShoppingCart, Check, TrendingDown, ChevronDown, ChevronUp, Bell } from "lucide-react";
 import { Product } from "@/types";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
@@ -40,19 +40,23 @@ export const QuickView = ({
   const [showHistory, setShowHistory] = useState(false);
   const [alertModalOpen, setAlertModalOpen] = useState(false);
 
-  if (!product) return null;
-
   // Track recently viewed when QuickView opens
-  if (isOpen) {
-    addViewed({
-      id: product.id,
-      name: product.name,
-      image_url: product.image_url,
-      chain: product.chain,
-      price_nzd: product.price.promo_price_nzd ?? product.price.price_nzd,
-      size: product.size,
-    });
-  }
+  const lastViewedRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (isOpen && product && product.id !== lastViewedRef.current) {
+      lastViewedRef.current = product.id;
+      addViewed({
+        id: product.id,
+        name: product.name,
+        image_url: product.image_url,
+        chain: product.chain,
+        price_nzd: product.price.promo_price_nzd ?? product.price.price_nzd,
+        size: product.size,
+      });
+    }
+  }, [isOpen, product, addViewed]);
+
+  if (!product) return null;
 
   const inTrolley = isInTrolley(product.id);
   const hasPromo = product.price.promo_price_nzd && product.price.promo_price_nzd < product.price.price_nzd;
