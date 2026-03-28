@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { ArrowLeft } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
@@ -32,12 +33,22 @@ const Login = () => {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
+    <div className="min-h-screen bg-gray-50">
+      {/* Nav bar */}
+      <header className="bg-primary px-4 py-3">
+        <div className="max-w-6xl mx-auto flex items-center justify-between">
+          <Link to="/" className="text-lg font-bold text-white font-sans tracking-[0.15em]">TROLL-E</Link>
+          <Button variant="ghost" size="sm" className="text-white hover:bg-white/10 gap-1.5" onClick={() => navigate(-1)}>
+            <ArrowLeft className="h-4 w-4" />
+            Back
+          </Button>
+        </div>
+      </header>
+
+      <div className="flex items-center justify-center px-4 py-16">
       <div className="w-full max-w-sm">
         <div className="text-center mb-8">
-          <Link to="/" className="text-2xl font-semibold text-primary">
-            TROLL-E
-          </Link>
+          <h1 className="text-2xl font-bold text-primary font-sans tracking-[0.15em]">Sign In</h1>
           <p className="text-gray-600 mt-2">Sign in to your account</p>
         </div>
 
@@ -118,6 +129,7 @@ const Login = () => {
             Sign up
           </Link>
         </p>
+      </div>
       </div>
     </div>
   );
