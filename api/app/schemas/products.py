@@ -37,8 +37,20 @@ class ProductSchema(BaseModel):
     last_updated: datetime
 
 
-class ProductDetailSchema(ProductSchema):
-    description: Optional[str] = Field(None, description="Placeholder for future enrichment")
+class ProductDetailSchema(BaseModel):
+    id: UUID
+    name: str
+    brand: Optional[str]
+    category: Optional[str]
+    chain: str
+    size: Optional[str]
+    department: Optional[str]
+    subcategory: Optional[str]
+    image_url: Optional[str]
+    product_url: Optional[str]
+    description: Optional[str] = None
+    prices: list[PriceSchema]
+    last_updated: datetime
 
 
 class ProductListResponse(BaseModel):
@@ -57,6 +69,12 @@ class StoreSchema(BaseModel):
     address: Optional[str]
     region: Optional[str]
     distance_km: Optional[float]
+    click_collect: Optional[bool] = None
+    delivery: Optional[bool] = None
+    delivery_fee_nzd: Optional[float] = None
+    cc_fee_nzd: Optional[float] = None
+    min_order_nzd: Optional[float] = None
+    free_delivery_threshold_nzd: Optional[float] = None
 
 
 class StoreListResponse(BaseModel):

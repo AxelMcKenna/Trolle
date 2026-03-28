@@ -1,9 +1,18 @@
 from __future__ import annotations
 
+from datetime import datetime
+from enum import Enum
 from typing import Optional
 from uuid import UUID
 
 from pydantic import BaseModel, Field, validator
+
+
+class FulfillmentMethod(str, Enum):
+    in_store = "in_store"
+    click_collect = "click_collect"
+    delivery = "delivery"
+    any = "any"
 
 
 class TrolleyItem(BaseModel):
@@ -17,6 +26,7 @@ class TrolleyCompareRequest(BaseModel):
     lon: float
     radius_km: float = Field(ge=1, le=10)
     loyalty_cards: Optional[dict[str, bool]] = None
+    fulfillment_method: FulfillmentMethod = FulfillmentMethod.any
 
     @validator("lat")
     @classmethod
@@ -55,6 +65,18 @@ class TrolleyStoreBreakdown(BaseModel):
     items_total: int
     is_complete: bool
     items: list[TrolleyStoreItem]
+    # Fulfillment
+    fulfillment_method: Optional[str] = None
+    delivery_fee: float = 0.0
+    estimated_total_with_fee: float = 0.0
+    click_collect: Optional[bool] = None
+    delivery: Optional[bool] = None
+    meets_minimum_order: Optional[bool] = None
+    # Slot availability (populated when DeliverySlot data exists)
+    delivery_available: Optional[bool] = None
+    cc_available: Optional[bool] = None
+    next_delivery_slot: Optional[datetime] = None
+    next_cc_slot: Optional[datetime] = None
 
 
 class TrolleySourceItem(BaseModel):
@@ -112,6 +134,7 @@ class SplitCompareRequest(BaseModel):
     radius_km: float = Field(ge=1, le=10)
     max_stores: int = Field(ge=1, le=3, default=2)
     loyalty_cards: Optional[dict[str, bool]] = None
+    fulfillment_method: FulfillmentMethod = FulfillmentMethod.any
 
     @validator("lat")
     @classmethod
@@ -135,6 +158,8 @@ class SplitStoreAssignment(BaseModel):
     distance_km: float
     items: list[TrolleyStoreItem]
     subtotal: float
+    delivery_fee: float = 0.0
+    subtotal_with_fee: float = 0.0
 
 
 class SplitCompareResult(BaseModel):
@@ -151,6 +176,7 @@ class SplitCompareResponse(BaseModel):
 
 
 __all__ = [
+    "FulfillmentMethod",
     "TrolleyItem",
     "TrolleyCompareRequest",
     "TrolleyCompareResponse",

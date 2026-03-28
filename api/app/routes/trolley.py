@@ -46,6 +46,7 @@ def _trolley_cache_key(request: TrolleyCompareRequest, user_id: Optional[str] = 
         "lon": round(request.lon, 2),
         "radius": request.radius_km,
         "loyalty": request.loyalty_cards,
+        "fulfillment": request.fulfillment_method.value,
         "uid": user_id,
     }, sort_keys=True)
     return f"trolley_compare:{hashlib.md5(raw.encode()).hexdigest()}"
@@ -74,6 +75,7 @@ async def trolley_compare(
                     lon=body.lon,
                     radius_km=body.radius_km,
                     loyalty_cards=body.loyalty_cards,
+                    fulfillment_method=body.fulfillment_method.value,
                 )
                 return r
 
@@ -178,6 +180,7 @@ async def trolley_split_compare(
                 radius_km=body.radius_km,
                 max_stores=body.max_stores,
                 loyalty_cards=body.loyalty_cards,
+                fulfillment_method=body.fulfillment_method.value,
             )
             return SplitCompareResponse(**result)
         except HTTPException:

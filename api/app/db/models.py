@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import Boolean, Computed, DateTime, Float, ForeignKey, Index, Integer, String, UniqueConstraint
+from sqlalchemy import Boolean, Computed, Date, DateTime, Float, ForeignKey, Index, Integer, String, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from geoalchemy2 import Geography
@@ -47,6 +47,15 @@ class Store(Base):
     region: Mapped[Optional[str]] = mapped_column(String(64))
     url: Mapped[Optional[str]] = mapped_column(String(255))
 
+    # Fulfillment capabilities (NULL = unknown, False = confirmed unavailable)
+    click_collect: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True)
+    delivery: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True)
+    delivery_fee_nzd: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    min_order_nzd: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    cc_fee_nzd: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    free_delivery_threshold_nzd: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    fulfillment_updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+
     prices: Mapped[list["Price"]] = relationship(back_populates="store")
 
     __table_args__ = (
@@ -54,6 +63,7 @@ class Store(Base):
         UniqueConstraint("chain", "api_id", name="uq_store_chain_api_id"),
         Index("ix_store_chain", "chain"),  # For chain filtering queries
         Index("ix_store_geog", "geog", postgresql_using="gist"),  # Spatial queries
+        Index("ix_store_fulfillment", "chain", "delivery", "click_collect"),
     )
 
 
@@ -345,9 +355,32 @@ class Notification(Base):
     )
 
 
+class DeliverySlot(Base):
+    __tablename__ = "delivery_slots"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID_TYPE, primary_key=True, default=_uuid)
+    store_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("stores.id", ondelete="CASCADE"), nullable=False
+    )
+    fulfillment_type: Mapped[str] = mapped_column(String(16), nullable=False)  # "delivery" or "click_collect"
+    slot_date: Mapped[datetime] = mapped_column(Date, nullable=False)
+    slot_start: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    slot_end: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    is_available: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    price_nzd: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    scraped_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("store_id", "fulfillment_type", "slot_start", name="uq_delivery_slot"),
+        Index("ix_delivery_slot_store_type_date", "store_id", "fulfillment_type", "slot_date"),
+        Index("ix_delivery_slot_available", "store_id", "fulfillment_type", "is_available"),
+    )
+
+
 __all__ = [
     "Store", "Product", "Price", "PriceHistory", "IngestionRun",
     "Recipe", "RecipeIngredient",
     "UserProfile", "SavedTrolley", "SavedRecipe",
     "TrolleyComparison", "PriceAlert", "Notification",
+    "DeliverySlot",
 ]

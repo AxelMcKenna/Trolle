@@ -78,10 +78,50 @@ def _pick_float(store: dict, *keys: str) -> float | None:
     return None
 
 
+def _pick_bool(store: dict, *keys: str) -> bool | None:
+    """Return first boolean-like value from provided keys."""
+    for key in keys:
+        value = store.get(key)
+        if value is None:
+            continue
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, str):
+            if value.lower() in ("true", "yes", "1"):
+                return True
+            if value.lower() in ("false", "no", "0"):
+                return False
+    return None
+
+
+# Chain-level fulfillment defaults applied when store JSON lacks specific values
+CHAIN_FULFILLMENT_DEFAULTS: dict[str, dict] = {
+    "countdown": {
+        "delivery_fee_nzd": 14.00,
+        "free_delivery_threshold_nzd": 150.00,
+        "cc_fee_nzd": 0.0,
+        "min_order_nzd": 0.0,
+    },
+    "paknsave": {
+        "delivery_fee_nzd": 0.0,
+        "free_delivery_threshold_nzd": 0.0,
+        "cc_fee_nzd": 0.0,
+        "min_order_nzd": 0.0,
+    },
+    "new_world": {
+        "delivery_fee_nzd": 9.00,
+        "free_delivery_threshold_nzd": 120.00,
+        "cc_fee_nzd": 0.0,
+        "min_order_nzd": 0.0,
+    },
+}
+
+
 async def upsert_stores(chain: str, stores: list[dict]) -> tuple[int, int]:
     """Upsert stores into DB. Returns (upserted, skipped)."""
     upserted = 0
     skipped = 0
+    defaults = CHAIN_FULFILLMENT_DEFAULTS.get(chain, {})
 
     async with get_async_session() as session:
         for store in stores:
@@ -121,17 +161,36 @@ async def upsert_stores(chain: str, stores: list[dict]) -> tuple[int, int]:
 
             api_id = _pick_str(store, "api_id", "id", "storeId", "store_id")
 
+            # Fulfillment fields: read from store JSON, fall back to chain defaults
+            click_collect = _pick_bool(store, "clickAndCollect", "click_collect")
+            delivery_flag = _pick_bool(store, "delivery")
+            delivery_fee = _pick_float(store, "delivery_fee_nzd") or defaults.get("delivery_fee_nzd")
+            min_order = _pick_float(store, "min_order_nzd") or defaults.get("min_order_nzd")
+            cc_fee = _pick_float(store, "cc_fee_nzd") or defaults.get("cc_fee_nzd")
+            free_threshold = _pick_float(store, "free_delivery_threshold_nzd") or defaults.get("free_delivery_threshold_nzd")
+
             await session.execute(
                 text("""
-                    INSERT INTO stores (id, chain, name, address, region, lat, lon, url, api_id)
-                    VALUES (gen_random_uuid(), :chain, :name, :address, :region, :lat, :lon, :url, :api_id)
+                    INSERT INTO stores (id, chain, name, address, region, lat, lon, url, api_id,
+                                        click_collect, delivery, delivery_fee_nzd, min_order_nzd,
+                                        cc_fee_nzd, free_delivery_threshold_nzd, fulfillment_updated_at)
+                    VALUES (gen_random_uuid(), :chain, :name, :address, :region, :lat, :lon, :url, :api_id,
+                            :click_collect, :delivery, :delivery_fee_nzd, :min_order_nzd,
+                            :cc_fee_nzd, :free_delivery_threshold_nzd, now())
                     ON CONFLICT (chain, name) DO UPDATE SET
-                        address = COALESCE(EXCLUDED.address, stores.address),
-                        region  = COALESCE(EXCLUDED.region, stores.region),
-                        lat     = COALESCE(EXCLUDED.lat, stores.lat),
-                        lon     = COALESCE(EXCLUDED.lon, stores.lon),
-                        url     = COALESCE(EXCLUDED.url, stores.url),
-                        api_id  = COALESCE(EXCLUDED.api_id, stores.api_id)
+                        address                     = COALESCE(EXCLUDED.address, stores.address),
+                        region                      = COALESCE(EXCLUDED.region, stores.region),
+                        lat                         = COALESCE(EXCLUDED.lat, stores.lat),
+                        lon                         = COALESCE(EXCLUDED.lon, stores.lon),
+                        url                         = COALESCE(EXCLUDED.url, stores.url),
+                        api_id                      = COALESCE(EXCLUDED.api_id, stores.api_id),
+                        click_collect               = COALESCE(EXCLUDED.click_collect, stores.click_collect),
+                        delivery                    = COALESCE(EXCLUDED.delivery, stores.delivery),
+                        delivery_fee_nzd            = COALESCE(EXCLUDED.delivery_fee_nzd, stores.delivery_fee_nzd),
+                        min_order_nzd               = COALESCE(EXCLUDED.min_order_nzd, stores.min_order_nzd),
+                        cc_fee_nzd                  = COALESCE(EXCLUDED.cc_fee_nzd, stores.cc_fee_nzd),
+                        free_delivery_threshold_nzd = COALESCE(EXCLUDED.free_delivery_threshold_nzd, stores.free_delivery_threshold_nzd),
+                        fulfillment_updated_at      = now()
                 """),
                 {
                     "chain": chain,
@@ -142,6 +201,12 @@ async def upsert_stores(chain: str, stores: list[dict]) -> tuple[int, int]:
                     "lon": lon,
                     "url": url,
                     "api_id": api_id,
+                    "click_collect": click_collect,
+                    "delivery": delivery_flag,
+                    "delivery_fee_nzd": delivery_fee,
+                    "min_order_nzd": min_order,
+                    "cc_fee_nzd": cc_fee,
+                    "free_delivery_threshold_nzd": free_threshold,
                 },
             )
             upserted += 1

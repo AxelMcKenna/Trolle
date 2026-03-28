@@ -9,7 +9,8 @@ from sqlalchemy import and_, cast, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from geoalchemy2 import Geography
 
-from app.db.models import Price, Product, Store
+from app.db.models import DeliverySlot, Price, Product, Store
+from app.services.fulfillment import compute_fulfillment_fee, store_supports_method
 from app.services.matching import find_cross_chain_matches
 
 
@@ -32,6 +33,40 @@ def _effective_price(
     return price_nzd
 
 
+def _best_fulfillment_for_store(
+    store: Store,
+    subtotal: float,
+) -> tuple[str, float]:
+    """Pick the cheapest fulfillment method a store supports and return (method, fee).
+
+    Priority: in_store (always free) > click_collect > delivery.
+    """
+    # In-store is always available and free
+    best_method = "in_store"
+    best_fee = 0.0
+
+    if store.click_collect is True:
+        cc_fee = compute_fulfillment_fee(
+            chain=store.chain, subtotal=subtotal, method="click_collect",
+            cc_fee_nzd=store.cc_fee_nzd,
+        )
+        if cc_fee <= best_fee:
+            best_method = "click_collect"
+            best_fee = cc_fee
+
+    if store.delivery is True:
+        del_fee = compute_fulfillment_fee(
+            chain=store.chain, subtotal=subtotal, method="delivery",
+            delivery_fee_nzd=store.delivery_fee_nzd,
+            free_delivery_threshold_nzd=store.free_delivery_threshold_nzd,
+        )
+        if del_fee < best_fee:
+            best_method = "delivery"
+            best_fee = del_fee
+
+    return best_method, best_fee
+
+
 async def compare_trolley(
     session: AsyncSession,
     *,
@@ -40,6 +75,7 @@ async def compare_trolley(
     lon: float,
     radius_km: float,
     loyalty_cards: dict[str, bool] | None = None,
+    fulfillment_method: str = "any",
 ) -> dict:
     """Compare trolley items across nearby stores.
 
@@ -47,6 +83,7 @@ async def compare_trolley(
         items: list of {product_id: UUID, quantity: int}
         lat, lon: user location
         radius_km: search radius
+        fulfillment_method: "in_store", "click_collect", "delivery", or "any"
 
     Returns:
         {stores: [...], items: [...], summary: {...}}
@@ -68,6 +105,20 @@ async def compare_trolley(
     )
     store_result = await session.execute(store_query)
     nearby_stores = [(store, dist) for store, dist in store_result.all()]
+
+    if not nearby_stores:
+        return {"stores": [], "items": [], "summary": {"total_items": len(items)}}
+
+    # Filter stores by fulfillment capability
+    if fulfillment_method != "any":
+        nearby_stores = [
+            (store, dist) for store, dist in nearby_stores
+            if store_supports_method(
+                method=fulfillment_method,
+                click_collect=store.click_collect,
+                delivery=store.delivery,
+            )
+        ]
 
     if not nearby_stores:
         return {"stores": [], "items": [], "summary": {"total_items": len(items)}}
@@ -223,21 +274,84 @@ async def compare_trolley(
                     "line_total": None,
                 })
 
+        estimated_total = round(estimated_total, 2)
         items_total = len(items)
+
+        # Compute fulfillment fee
+        if fulfillment_method == "any":
+            chosen_method, delivery_fee = _best_fulfillment_for_store(store, estimated_total)
+        else:
+            chosen_method = fulfillment_method
+            delivery_fee = compute_fulfillment_fee(
+                chain=store.chain,
+                subtotal=estimated_total,
+                method=fulfillment_method,
+                delivery_fee_nzd=store.delivery_fee_nzd,
+                free_delivery_threshold_nzd=store.free_delivery_threshold_nzd,
+                cc_fee_nzd=store.cc_fee_nzd,
+            )
+
+        delivery_fee = round(delivery_fee, 2)
+        estimated_total_with_fee = round(estimated_total + delivery_fee, 2)
+
+        # Check minimum order requirement
+        meets_minimum = True
+        if store.min_order_nzd and chosen_method in ("delivery", "click_collect"):
+            meets_minimum = estimated_total >= store.min_order_nzd
+
         store_breakdowns.append({
             "store_id": str(store_id),
             "store_name": store.name,
             "chain": store.chain,
             "distance_km": round(distance / 1000, 2),
-            "estimated_total": round(estimated_total, 2),
+            "estimated_total": estimated_total,
             "items_available": items_available,
             "items_total": items_total,
             "is_complete": items_available == items_total,
             "items": store_items,
+            # Fulfillment fields
+            "fulfillment_method": chosen_method,
+            "delivery_fee": delivery_fee,
+            "estimated_total_with_fee": estimated_total_with_fee,
+            "click_collect": store.click_collect,
+            "delivery": store.delivery,
+            "meets_minimum_order": meets_minimum,
         })
 
-    # Sort: complete stores first, then by estimated total
-    store_breakdowns.sort(key=lambda s: (not s["is_complete"], s["estimated_total"]))
+    # Batch-query slot availability for all nearby stores
+    now = datetime.now(tz=timezone.utc)
+    slot_query = (
+        select(
+            DeliverySlot.store_id,
+            DeliverySlot.fulfillment_type,
+            func.min(DeliverySlot.slot_start).label("next_slot"),
+        )
+        .where(
+            and_(
+                DeliverySlot.store_id.in_(store_ids),
+                DeliverySlot.is_available == True,  # noqa: E712
+                DeliverySlot.slot_start >= now,
+            )
+        )
+        .group_by(DeliverySlot.store_id, DeliverySlot.fulfillment_type)
+    )
+    slot_result = await session.execute(slot_query)
+    slot_index: dict[tuple, datetime] = {}
+    for row in slot_result.all():
+        slot_index[(str(row.store_id), row.fulfillment_type)] = row.next_slot
+
+    # Attach slot availability to each store breakdown
+    for sb in store_breakdowns:
+        sid = sb["store_id"]
+        next_del = slot_index.get((sid, "delivery"))
+        next_cc = slot_index.get((sid, "click_collect"))
+        sb["delivery_available"] = next_del is not None if sb["delivery"] is not False else False
+        sb["cc_available"] = next_cc is not None if sb["click_collect"] is not False else False
+        sb["next_delivery_slot"] = next_del.isoformat() if next_del else None
+        sb["next_cc_slot"] = next_cc.isoformat() if next_cc else None
+
+    # Sort: complete stores first, then by total including fee
+    store_breakdowns.sort(key=lambda s: (not s["is_complete"], s["estimated_total_with_fee"]))
 
     return {
         "stores": store_breakdowns,
@@ -259,6 +373,7 @@ async def split_compare_trolley(
     radius_km: float,
     max_stores: int = 2,
     loyalty_cards: dict[str, bool] | None = None,
+    fulfillment_method: str = "any",
 ) -> dict:
     """Optimize a trolley split across up to max_stores stores.
 
@@ -275,6 +390,7 @@ async def split_compare_trolley(
         lon=lon,
         radius_km=radius_km,
         loyalty_cards=loyalty_cards,
+        fulfillment_method=fulfillment_method,
     )
 
     store_breakdowns = comparison["stores"]
@@ -287,7 +403,7 @@ async def split_compare_trolley(
         }
 
     single_best = store_breakdowns[0]
-    single_best_total = single_best["estimated_total"]
+    single_best_total = single_best["estimated_total_with_fee"]
 
     # Build price matrix: store_idx -> {source_product_id -> (price, item_data)}
     item_ids = [item["product_id"] for item in items]
@@ -337,8 +453,15 @@ async def split_compare_trolley(
                 else:
                     all_covered = False
 
-            if total < best_total:
-                best_total = total
+            # Add delivery fees for each store in the combo
+            combo_fees = 0.0
+            for idx in combo:
+                if assignments[idx]:  # only charge fee if store has items
+                    combo_fees += store_breakdowns[idx].get("delivery_fee", 0.0)
+            total_with_fees = round(total + combo_fees, 2)
+
+            if total_with_fees < best_total:
+                best_total = total_with_fees
                 best_assignment = {
                     "assignments": [
                         {
@@ -352,6 +475,14 @@ async def split_compare_trolley(
                                     (i["price"] or 0) * i["quantity"]
                                     for i in assigned_items
                                 ),
+                                2,
+                            ),
+                            "delivery_fee": store_breakdowns[idx].get("delivery_fee", 0.0),
+                            "subtotal_with_fee": round(
+                                sum(
+                                    (i["price"] or 0) * i["quantity"]
+                                    for i in assigned_items
+                                ) + store_breakdowns[idx].get("delivery_fee", 0.0),
                                 2,
                             ),
                         }

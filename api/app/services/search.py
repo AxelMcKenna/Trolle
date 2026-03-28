@@ -331,34 +331,58 @@ async def fetch_products(
     return ProductListResponse(items=items, total=total, page=page, page_size=page_size)
 
 
-async def fetch_product_detail(session: AsyncSession, product_id: UUID) -> ProductDetailSchema:
+async def fetch_product_detail(
+    session: AsyncSession,
+    product_id: UUID,
+    *,
+    lat: float | None = None,
+    lon: float | None = None,
+    radius_km: float | None = None,
+) -> ProductDetailSchema:
+    has_location = lat is not None and lon is not None and radius_km is not None
+
+    # Build optional distance column
+    user_point_geog = None
+    distance_col = literal(None).label("distance_m")
+    if has_location:
+        user_point = func.ST_SetSRID(func.ST_MakePoint(lon, lat), 4326)
+        user_point_geog = cast(user_point, Geography)
+        distance_col = func.ST_Distance(Store.geog, user_point_geog).label("distance_m")
+
     query = (
-        select(Product, Price, Store)
+        select(Product, Price, Store, distance_col)
         .join(Price, Price.product_id == Product.id)
         .join(Store, Store.id == Price.store_id)
         .where(Product.id == product_id)
     )
+
+    # If location provided, optionally filter to nearby stores
+    if has_location:
+        nearby_ids = await _get_store_ids_within_radius(
+            session, lat=lat, lon=lon, radius_km=radius_km,
+        )
+        if nearby_ids:
+            query = query.where(Store.id.in_(nearby_ids))
+
+    # Sort by effective price (cheapest first)
+    query = query.order_by(func.coalesce(Price.promo_price_nzd, Price.price_nzd).asc())
+
     result = await session.execute(query)
-    row = result.first()
-    if not row:
+    rows = result.all()
+    if not rows:
         raise ValueError("Product not found")
-    product, price, store = row
+
+    product = rows[0][0]
     metrics = compute_pricing_metrics(
         unit_price=product.unit_price,
         unit_measure=product.unit_measure,
     )
-    return ProductDetailSchema(
-        id=product.id,
-        name=format_product_name(product.name, product.brand),
-        brand=product.brand,
-        category=product.category,
-        chain=product.chain,
-        size=product.size,
-        department=product.department,
-        subcategory=product.subcategory,
-        image_url=product.image_url,
-        product_url=product.product_url,
-        price=PriceSchema(
+
+    prices: list[PriceSchema] = []
+    latest_seen = rows[0][1].last_seen_at
+    for _, price, store, dist_m in rows:
+        distance = round(dist_m / 1000, 2) if dist_m is not None else None
+        prices.append(PriceSchema(
             store_id=store.id,
             store_name=store.name,
             chain=store.chain,
@@ -370,9 +394,24 @@ async def fetch_product_detail(session: AsyncSession, product_id: UUID) -> Produ
             unit_measure=metrics.unit_measure,
             is_member_only=price.is_member_only,
             is_stale=_is_stale(price),
-            distance_km=None,
-        ),
-        last_updated=price.last_seen_at,
+            distance_km=distance,
+        ))
+        if price.last_seen_at and price.last_seen_at > latest_seen:
+            latest_seen = price.last_seen_at
+
+    return ProductDetailSchema(
+        id=product.id,
+        name=format_product_name(product.name, product.brand),
+        brand=product.brand,
+        category=product.category,
+        chain=product.chain,
+        size=product.size,
+        department=product.department,
+        subcategory=product.subcategory,
+        image_url=product.image_url,
+        product_url=product.product_url,
+        prices=prices,
+        last_updated=latest_seen,
     )
 
 
@@ -407,6 +446,12 @@ async def fetch_stores_nearby(
             address=store.address,
             region=store.region,
             distance_km=round(distance / 1000, 2),
+            click_collect=store.click_collect,
+            delivery=store.delivery,
+            delivery_fee_nzd=store.delivery_fee_nzd,
+            cc_fee_nzd=store.cc_fee_nzd,
+            min_order_nzd=store.min_order_nzd,
+            free_delivery_threshold_nzd=store.free_delivery_threshold_nzd,
         )
         for store, distance in result.all()
     ]

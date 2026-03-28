@@ -27,6 +27,7 @@ SCRAPER_RETRY_DELAY_SECONDS = 300  # Wait 5 min before retrying a failed scraper
 SCHEDULE_HOUR = 2  # Run scrapers at 2:00 AM
 SCHEDULE_TZ = ZoneInfo("Pacific/Auckland")  # NZST/NZDT
 CHECK_INTERVAL_SECONDS = 60  # How often to check if it's time to run
+SLOT_SCRAPE_INTERVAL_HOURS = 2  # Run slot scrapers every 2 hours
 
 
 def _seconds_until_next_run() -> float:
@@ -164,6 +165,30 @@ class WorkerScheduler:
                 await asyncio.sleep(SEQUENTIAL_DELAY_SECONDS)
 
 
+_last_slot_scrape: Optional[datetime] = None
+
+
+async def _run_slot_scrapers_if_due() -> None:
+    """Run slot scrapers if enough time has passed since the last run."""
+    global _last_slot_scrape
+    now = datetime.utcnow()
+
+    if _last_slot_scrape is not None:
+        hours_since = (now - _last_slot_scrape).total_seconds() / 3600
+        if hours_since < SLOT_SCRAPE_INTERVAL_HOURS:
+            return
+
+    logger.info("Running delivery/C&C slot scrapers...")
+    try:
+        from app.scrapers.slot_scraper import run_all_slot_scrapers
+        results = await run_all_slot_scrapers()
+        total = sum(results.values())
+        logger.info(f"Slot scraping complete: {total} total slots ({results})")
+        _last_slot_scrape = now
+    except Exception:
+        logger.exception("Slot scraping failed")
+
+
 async def _check_stale_chains(scheduler: WorkerScheduler) -> None:
     """Alert if any chain hasn't had a successful run within the stale threshold."""
     settings = get_settings()
@@ -252,6 +277,12 @@ async def main(chains_to_run: Optional[List[str]] = None) -> None:
                 await run_promo_expiry_cleanup()
             except Exception as e:
                 logger.warning(f"Promo expiry cleanup failed: {e}")
+
+            # Slot scraping — run every SLOT_SCRAPE_INTERVAL_HOURS
+            try:
+                await _run_slot_scrapers_if_due()
+            except Exception as e:
+                logger.warning(f"Slot scraping failed: {e}")
 
             await _check_stale_chains(scheduler)
 
