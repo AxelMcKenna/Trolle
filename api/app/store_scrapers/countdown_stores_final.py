@@ -114,14 +114,13 @@ async def main():
 
         logger.info(f"\n✓ Saved {len(stores)} stores to {output_path}")
 
-        # Print sample
-        print("\nSample store:")
-        print(json.dumps(stores[0], indent=2))
+        # Log sample
+        logger.info("Sample store: %s", json.dumps(stores[0], indent=2))
 
-        # Print summary
-        print(f"\nTotal stores: {len(stores)}")
+        # Log summary
+        logger.info("Total stores: %d", len(stores))
         suburbs = set(s.get('suburb', '') for s in stores)
-        print(f"Unique suburbs: {len(suburbs)}")
+        logger.info("Unique suburbs: %d", len(suburbs))
 
     else:
         logger.error("No stores found!")

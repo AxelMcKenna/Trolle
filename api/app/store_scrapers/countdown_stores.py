@@ -90,8 +90,8 @@ async def scrape_countdown_stores():
 
             if store_data:
                 logger.info(f"Found store data in page JavaScript: {type(store_data)}")
-                print("Store data keys:", list(store_data.keys()) if isinstance(store_data, dict) else "list")
-                print("Sample:", json.dumps(store_data if isinstance(store_data, dict) else store_data[0] if store_data else {}, indent=2)[:500])
+                logger.debug("Store data keys: %s", list(store_data.keys()) if isinstance(store_data, dict) else "list")
+                logger.debug("Sample: %s", json.dumps(store_data if isinstance(store_data, dict) else store_data[0] if store_data else {}, indent=2)[:500])
 
             # Option 2: Try to interact with store locator UI
             # Look for search input
@@ -111,9 +111,9 @@ async def scrape_countdown_stores():
                     })).slice(0, 5); // Just first 5 for inspection
                 }''')
 
-                print("\nStore elements found:", len(stores_on_page))
+                logger.info("Store elements found: %d", len(stores_on_page))
                 if stores_on_page:
-                    print("Sample store element:", stores_on_page[0])
+                    logger.debug("Sample store element: %s", stores_on_page[0])
 
             # Option 3: Check network requests for API calls
             logger.info("Checking network requests...")
@@ -128,9 +128,9 @@ async def scrape_countdown_stores():
 
             await asyncio.sleep(3)
 
-            print("\nAPI requests found:")
+            logger.info("API requests found:")
             for req in requests[-10:]:  # Last 10
-                print(f"  {req['status']} - {req['url']}")
+                logger.info("  %s - %s", req['status'], req['url'])
 
             # Keep browser open for manual inspection
             logger.info("\nBrowser will stay open for 30 seconds for manual inspection...")

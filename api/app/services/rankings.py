@@ -12,6 +12,7 @@ from geoalchemy2 import Geography
 from app.db.models import Price, Product, Store
 from app.schemas.rankings import RankedStore, StoreRankingResponse
 from app.services.cache import cached_json
+from app.services.matching import _aliased_name_fully_cleaned, _sql_normalize_size
 from app.services.parser_utils import CATEGORY_HIERARCHY
 from app.services.search import _get_store_ids_within_radius
 
@@ -262,37 +263,32 @@ async def _rank_stores_uncached(
         p1 = aliased(Product, name="p1")
         p2 = aliased(Product, name="p2")
 
-        # Brand-stripped name expressions for both sides
-        p1_clean = case(
-            (
-                and_(
-                    p1.brand.is_not(None),
-                    p1.brand != "",
-                    func.strpos(func.lower(p1.name), func.lower(p1.brand)) == 1,
-                ),
-                func.ltrim(
-                    func.substr(func.lower(p1.name), func.char_length(p1.brand) + 1),
-                    " -\u2013",
-                ),
-            ),
-            else_=func.lower(p1.name),
-        )
-        p2_clean = case(
-            (
-                and_(
-                    p2.brand.is_not(None),
-                    p2.brand != "",
-                    func.strpos(func.lower(p2.name), func.lower(p2.brand)) == 1,
-                ),
-                func.ltrim(
-                    func.substr(func.lower(p2.name), func.char_length(p2.brand) + 1),
-                    " -\u2013",
-                ),
-            ),
-            else_=func.lower(p2.name),
-        )
+        # Brand + size stripped name expressions (shared helper from matching.py)
+        p1_clean = _aliased_name_fully_cleaned(p1)
+        p2_clean = _aliased_name_fully_cleaned(p2)
 
         sim = func.similarity(p1_clean, p2_clean).label("sim")
+
+        # Size matching: prefer numeric comparison, fall back to string
+        TOLERANCE = 0.02
+        numeric_volume_match = and_(
+            p1.volume_ml.is_not(None),
+            p2.volume_ml.is_not(None),
+            func.abs(p1.volume_ml - p2.volume_ml) / func.greatest(p1.volume_ml, 0.01) <= TOLERANCE,
+        )
+        numeric_weight_match = and_(
+            p1.weight_g.is_not(None),
+            p2.weight_g.is_not(None),
+            func.abs(p1.weight_g - p2.weight_g) / func.greatest(p1.weight_g, 0.01) <= TOLERANCE,
+        )
+        string_size_fallback = and_(
+            p1.volume_ml.is_(None),
+            p2.volume_ml.is_(None),
+            p1.weight_g.is_(None),
+            p2.weight_g.is_(None),
+            _sql_normalize_size(p1.size) == _sql_normalize_size(p2.size),
+        )
+        size_match = or_(numeric_volume_match, numeric_weight_match, string_size_fallback)
 
         cross_query = (
             select(
@@ -307,8 +303,8 @@ async def _rank_stores_uncached(
                     p1.id.in_(rep_product_ids),
                     p2.id.in_(rep_product_ids),
                     p1.chain != p2.chain,
-                    p1.department == p2.department,
-                    func.coalesce(func.lower(p1.size), "") == func.coalesce(func.lower(p2.size), ""),
+                    func.coalesce(p1.department, "") == func.coalesce(p2.department, ""),
+                    size_match,
                     sim >= _SIMILARITY_THRESHOLD,
                 )
             )
