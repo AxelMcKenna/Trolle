@@ -27,7 +27,7 @@ export const Explore = () => {
   const FETCH_DEBOUNCE_MS = 220;
   const [searchParams, setSearchParams] = useSearchParams();
   const [searchQuery, setSearchQuery] = useState('');
-  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(() => window.innerWidth >= 1024);
   const { location, radiusKm, isLocationSet, openLocationModal, requestAutoLocation, loading: locationLoading, error: locationError } = useLocationContext();
   const { filters, updateFilters } = useFilters();
   const { recentlyViewed } = useRecentlyViewed();
@@ -143,8 +143,9 @@ export const Explore = () => {
             onSearch={handleSearch}
             variant="compact"
           />
-          <FilterBar onOpenFilters={() => setIsSidebarOpen(true)} />
         </div>
+
+        <FilterBar onOpenFilters={() => setIsSidebarOpen(true)} />
 
         <div className="flex">
           <FilterSidebar
