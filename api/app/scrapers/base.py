@@ -11,7 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
 
 from app.core.config import get_settings
-from app.db.models import IngestionRun, Price, Product, Store
+from app.db.models import IngestionRun, Price, PriceHistory, Product, Store
 from app.db.session import async_transaction
 from app.services.alerting import send_alert
 
@@ -348,8 +348,9 @@ class Scraper(abc.ABC):
             for price in existing_prices
         }
 
-        # Step 4: Bulk upsert prices
+        # Step 4: Bulk upsert prices + collect history records
         price_values = []
+        history_values = []
         for product_data in products_data:
             product_id = product_id_map.get(product_data["source_id"])
             if not product_id:
@@ -369,6 +370,17 @@ class Scraper(abc.ABC):
                         price_changed = True
                         changed_count += 1
 
+                # Record price history on change or new product
+                if price_changed or not existing_price:
+                    history_values.append({
+                        "product_id": product_id,
+                        "store_id": store.id,
+                        "price_nzd": product_data["price_nzd"],
+                        "promo_price_nzd": product_data.get("promo_price_nzd"),
+                        "is_member_only": product_data.get("is_member_only", False),
+                        "recorded_at": now,
+                    })
+
                 # Always include in bulk upsert (will update last_seen_at)
                 price_values.append({
                     "product_id": product_id,
@@ -384,6 +396,12 @@ class Scraper(abc.ABC):
 
                 if not existing_price:
                     changed_count += 1
+
+        # Bulk insert price history records
+        if history_values:
+            for idx in range(0, len(history_values), PRICE_UPSERT_CHUNK_SIZE):
+                chunk = history_values[idx: idx + PRICE_UPSERT_CHUNK_SIZE]
+                await session.execute(insert(PriceHistory).values(chunk))
 
         # Bulk insert with ON CONFLICT in chunks to avoid Postgres bind limits
         if price_values:

@@ -53,6 +53,18 @@ class WorkerScheduler:
                 duration = (datetime.utcnow() - start_time).total_seconds()
                 logger.info(f"Scraper completed: {chain} ({duration:.1f}s)")
                 self.last_run[chain] = datetime.utcnow()
+
+                # Check price alerts after successful scrape
+                try:
+                    from app.services.price_alerts import check_triggered_alerts
+                    from app.db.session import async_transaction
+                    async with async_transaction() as alert_session:
+                        triggered = await check_triggered_alerts(alert_session)
+                    if triggered:
+                        logger.info(f"Triggered {triggered} price alert(s) after {chain} scrape")
+                except Exception as alert_err:
+                    logger.warning(f"Price alert check failed: {alert_err}")
+
                 return  # success
 
             except asyncio.TimeoutError:

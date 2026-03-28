@@ -42,18 +42,27 @@ const categories: CategoryDef[] = [
 
 export const CategoryBar = () => {
   const { filters, updateFilters } = useFilters();
-  const active = filters.category;
+  // Fix 8: Support multi-select — category param is comma-separated
+  const activeCategories = filters.category ? filters.category.split(',') : [];
 
   return (
     <div className="bg-secondary overflow-x-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
       <div className="flex justify-center">
         <div className="flex gap-1.5 px-4 pt-4 pb-2.5">
           {categories.map(({ value, label, icon: Icon }) => {
-            const isActive = active === value;
+            const isActive = activeCategories.includes(value);
             return (
               <button
                 key={value}
-                onClick={() => updateFilters({ category: isActive ? undefined : value })}
+                onClick={() => {
+                  let next: string[];
+                  if (isActive) {
+                    next = activeCategories.filter((c) => c !== value);
+                  } else {
+                    next = [...activeCategories, value];
+                  }
+                  updateFilters({ category: next.length > 0 ? next.join(',') : undefined });
+                }}
                 className={cn(
                   'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium whitespace-nowrap transition-colors',
                   isActive

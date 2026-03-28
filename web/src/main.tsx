@@ -33,6 +33,7 @@ const RecipeDetail = lazy(() => import("@/pages/RecipeDetail"));
 const RecipeCreate = lazy(() => import("@/pages/RecipeCreate"));
 const Login = lazy(() => import("@/pages/Login"));
 const Signup = lazy(() => import("@/pages/Signup"));
+const ForgotPassword = lazy(() => import("@/pages/ForgotPassword"));
 const AuthCallback = lazy(() => import("@/pages/AuthCallback"));
 const Account = lazy(() => import("@/pages/Account"));
 const SharedTrolley = lazy(() => import("@/pages/SharedTrolley"));
@@ -67,6 +68,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
                 <Route path="/recipes/:id" element={<RecipeDetail />} />
                 <Route path="/login" element={<Login />} />
                 <Route path="/signup" element={<Signup />} />
+                <Route path="/forgot-password" element={<ForgotPassword />} />
                 <Route path="/auth/callback" element={<AuthCallback />} />
                 <Route path="/account" element={<ProtectedRoute><Account /></ProtectedRoute>} />
                 <Route path="/trolley/shared/:token" element={<SharedTrolley />} />

@@ -408,7 +408,7 @@ export const Trolley = () => {
                     Calculating optimal split...
                   </div>
                 )}
-                {shoppingMode > 1 && !splitLoading && splitData?.splits?.length > 0 && (
+                {shoppingMode > 1 && !splitLoading && splitData && splitData.splits && splitData.splits.length > 0 && (
                   <div className="mt-3 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                     {splitData.splits[splitData.splits.length - 1].assignments.map((assignment) => (
                       <Card key={assignment.store_id} className="p-4 bg-card">

@@ -75,7 +75,7 @@ export enum SortOption {
   NEWEST = "newest"
 }
 
-export type ChainType = "countdown" | "new_world" | "paknsave";
+export type ChainType = "countdown" | "new_world" | "paknsave" | "mad_butcher" | "prestons";
 
 // Trolley types
 export interface TrolleyItem {
@@ -216,6 +216,80 @@ export interface RecipeCostResponse {
     total_stores: number;
     complete_stores: number;
   };
+}
+
+// Price history types
+export interface PriceHistoryPoint {
+  price_nzd: number;
+  promo_price_nzd?: number | null;
+  is_member_only: boolean;
+  recorded_at: string;
+}
+
+export interface StoreHistoryGroup {
+  store_id: string;
+  store_name: string;
+  chain: string;
+  data_points: PriceHistoryPoint[];
+}
+
+export interface PriceHistoryResponse {
+  product_id: string;
+  product_name: string;
+  stores: StoreHistoryGroup[];
+}
+
+// Price alert types
+export interface PriceAlert {
+  id: string;
+  product_id: string;
+  product_name: string;
+  product_image_url?: string | null;
+  chain: string;
+  store_id?: string | null;
+  store_name?: string | null;
+  target_price: number;
+  current_price: number;
+  is_active: boolean;
+  triggered_at?: string | null;
+  created_at: string;
+}
+
+export interface Notification {
+  id: string;
+  title: string;
+  message: string;
+  is_read: boolean;
+  alert_id?: string | null;
+  created_at: string;
+}
+
+export interface NotificationsResponse {
+  items: Notification[];
+  unread_count: number;
+}
+
+// Split shopping types
+export interface SplitStoreAssignment {
+  store_id: string;
+  store_name: string;
+  chain: string;
+  distance_km: number;
+  items: TrolleyStoreItem[];
+  subtotal: number;
+}
+
+export interface SplitCompareResult {
+  assignments: SplitStoreAssignment[];
+  grand_total: number;
+  store_count: number;
+}
+
+export interface SplitCompareResponse {
+  single_best: TrolleyStoreBreakdown;
+  single_best_total: number;
+  splits: SplitCompareResult[];
+  savings_vs_single: number;
 }
 
 export interface ProductFilters {

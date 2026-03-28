@@ -63,6 +63,26 @@ class StoreListResponse(BaseModel):
     items: list[StoreSchema]
 
 
+class PriceHistoryPoint(BaseModel):
+    price_nzd: float
+    promo_price_nzd: Optional[float]
+    is_member_only: bool
+    recorded_at: datetime
+
+
+class StoreHistoryGroup(BaseModel):
+    store_id: UUID
+    store_name: str
+    chain: str
+    data_points: list[PriceHistoryPoint]
+
+
+class PriceHistoryResponse(BaseModel):
+    product_id: UUID
+    product_name: str
+    stores: list[StoreHistoryGroup]
+
+
 __all__ = [
     "PriceSchema",
     "ProductSchema",
@@ -70,4 +90,7 @@ __all__ = [
     "ProductListResponse",
     "StoreSchema",
     "StoreListResponse",
+    "PriceHistoryPoint",
+    "StoreHistoryGroup",
+    "PriceHistoryResponse",
 ]

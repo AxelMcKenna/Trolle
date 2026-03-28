@@ -4,13 +4,17 @@ from typing import Dict, Type
 
 from app.scrapers.base import Scraper
 from app.scrapers.countdown_api import CountdownAPIScraper
+from app.scrapers.mad_butcher import MadButcherScraper
 from app.scrapers.new_world_api import NewWorldAPIScraper
 from app.scrapers.paknsave_api import PakNSaveAPIScraper
+from app.scrapers.prestons import PrestonsScraper
 
 CHAINS: Dict[str, Type[Scraper]] = {
     "countdown": CountdownAPIScraper,
     "new_world": NewWorldAPIScraper,
     "paknsave": PakNSaveAPIScraper,
+    "mad_butcher": MadButcherScraper,
+    "prestons": PrestonsScraper,
 }
 
 

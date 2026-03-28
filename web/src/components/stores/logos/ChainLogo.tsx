@@ -15,7 +15,7 @@ interface ChainLogoProps {
  * ChainLogo component - Renders the appropriate logo for a given supermarket chain
  */
 export const ChainLogo: React.FC<ChainLogoProps> = ({ chain, className, color }) => {
-  const logoComponents: Record<ChainType, React.FC<{ className?: string; color?: string }>> = {
+  const logoComponents: Partial<Record<ChainType, React.FC<{ className?: string; color?: string }>>> = {
     countdown: CountdownLogo,
     new_world: NewWorldLogo,
     paknsave: PaknSaveLogo,

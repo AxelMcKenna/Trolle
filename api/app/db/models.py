@@ -130,6 +130,23 @@ class Price(Base):
     )
 
 
+class PriceHistory(Base):
+    __tablename__ = "price_history"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID_TYPE, primary_key=True, default=_uuid)
+    product_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("products.id", ondelete="CASCADE"), nullable=False)
+    store_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("stores.id", ondelete="CASCADE"), nullable=False)
+    price_nzd: Mapped[float] = mapped_column(Float, nullable=False)
+    promo_price_nzd: Mapped[Optional[float]] = mapped_column(Float)
+    is_member_only: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    recorded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+    __table_args__ = (
+        Index("ix_price_history_product_store_recorded", "product_id", "store_id", "recorded_at"),
+        Index("ix_price_history_recorded_at", "recorded_at"),
+    )
+
+
 class Recipe(Base):
     __tablename__ = "recipes"
 
@@ -210,6 +227,12 @@ class UserProfile(Base):
     saved_recipes: Mapped[list["SavedRecipe"]] = relationship(
         back_populates="user", cascade="all, delete-orphan"
     )
+    price_alerts: Mapped[list["PriceAlert"]] = relationship(
+        back_populates="user", cascade="all, delete-orphan"
+    )
+    notifications: Mapped[list["Notification"]] = relationship(
+        back_populates="user", cascade="all, delete-orphan"
+    )
 
 
 class SavedTrolley(Base):
@@ -271,9 +294,60 @@ class TrolleyComparison(Base):
     )
 
 
+class PriceAlert(Base):
+    __tablename__ = "price_alerts"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID_TYPE, primary_key=True, default=_uuid)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("user_profiles.id", ondelete="CASCADE"), nullable=False
+    )
+    product_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("products.id", ondelete="CASCADE"), nullable=False
+    )
+    store_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        ForeignKey("stores.id", ondelete="SET NULL"), nullable=True
+    )
+    target_price: Mapped[float] = mapped_column(Float, nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    triggered_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+
+    user: Mapped[UserProfile] = relationship(back_populates="price_alerts")
+    product: Mapped[Product] = relationship()
+    notifications: Mapped[list["Notification"]] = relationship(
+        back_populates="alert", cascade="all, delete-orphan"
+    )
+
+    __table_args__ = (
+        Index("ix_price_alerts_user", "user_id"),
+        Index("ix_price_alerts_active_product", "product_id", "is_active"),
+    )
+
+
+class Notification(Base):
+    __tablename__ = "notifications"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID_TYPE, primary_key=True, default=_uuid)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("user_profiles.id", ondelete="CASCADE"), nullable=False
+    )
+    alert_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        ForeignKey("price_alerts.id", ondelete="CASCADE"), nullable=True
+    )
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    message: Mapped[str] = mapped_column(String(1024), nullable=False)
+    is_read: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+
+    user: Mapped[UserProfile] = relationship(back_populates="notifications")
+    alert: Mapped[Optional[PriceAlert]] = relationship(back_populates="notifications")
+
+    __table_args__ = (
+        Index("ix_notifications_user_unread", "user_id", "is_read"),
+    )
+
+
 __all__ = [
-    "Store", "Product", "Price", "IngestionRun",
+    "Store", "Product", "Price", "PriceHistory", "IngestionRun",
     "Recipe", "RecipeIngredient",
     "UserProfile", "SavedTrolley", "SavedRecipe",
-    "TrolleyComparison",
+    "TrolleyComparison", "PriceAlert", "Notification",
 ]

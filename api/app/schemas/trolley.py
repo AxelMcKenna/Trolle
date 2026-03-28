@@ -105,6 +105,51 @@ class TrolleySuggestionsResponse(BaseModel):
     items: list[SuggestionItem]
 
 
+class SplitCompareRequest(BaseModel):
+    items: list[TrolleyItem] = Field(..., min_length=1, max_length=50)
+    lat: float
+    lon: float
+    radius_km: float = Field(ge=1, le=10)
+    max_stores: int = Field(ge=1, le=3, default=2)
+    loyalty_cards: Optional[dict[str, bool]] = None
+
+    @validator("lat")
+    @classmethod
+    def validate_lat(cls, v: float) -> float:
+        if not (-47 <= v <= -34):
+            raise ValueError("Latitude must be within New Zealand bounds (-47 to -34)")
+        return v
+
+    @validator("lon")
+    @classmethod
+    def validate_lon(cls, v: float) -> float:
+        if not (165 <= v <= 179):
+            raise ValueError("Longitude must be within New Zealand bounds (165 to 179)")
+        return v
+
+
+class SplitStoreAssignment(BaseModel):
+    store_id: str
+    store_name: str
+    chain: str
+    distance_km: float
+    items: list[TrolleyStoreItem]
+    subtotal: float
+
+
+class SplitCompareResult(BaseModel):
+    assignments: list[SplitStoreAssignment]
+    grand_total: float
+    store_count: int
+
+
+class SplitCompareResponse(BaseModel):
+    single_best: Optional[TrolleyStoreBreakdown]
+    single_best_total: float
+    splits: list[SplitCompareResult]
+    savings_vs_single: float
+
+
 __all__ = [
     "TrolleyItem",
     "TrolleyCompareRequest",
@@ -117,4 +162,8 @@ __all__ = [
     "SuggestionItem",
     "TrolleySuggestionsRequest",
     "TrolleySuggestionsResponse",
+    "SplitCompareRequest",
+    "SplitStoreAssignment",
+    "SplitCompareResult",
+    "SplitCompareResponse",
 ]

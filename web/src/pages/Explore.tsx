@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { Header } from '@/components/layout/Header';
 import { FilterBar } from '@/components/filters/FilterBar';
 import { FilterSidebar } from '@/components/filters/FilterSidebar';
@@ -10,9 +10,11 @@ import { useFilters } from '@/hooks/useFilters';
 import { useRecentlyViewed } from '@/hooks/useRecentlyViewed';
 import { useLocationContext } from '@/contexts/LocationContext';
 import { useSearchParams } from 'react-router-dom';
-import { MapPin } from 'lucide-react';
+import { MapPin, X, Navigation, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { SortOption } from '@/types';
+import { SortOption, Product } from '@/types';
+import { QuickView } from '@/components/products/QuickView';
+import { api } from '@/lib/api';
 import {
   Pagination,
   PaginationContent,
@@ -23,6 +25,8 @@ import {
   PaginationPrevious,
 } from '@/components/ui/pagination';
 
+const LOCATION_PROMPT_DISMISSED_KEY = 'trolle.locationPromptDismissed';
+
 export const Explore = () => {
   const FETCH_DEBOUNCE_MS = 220;
   const [searchParams, setSearchParams] = useSearchParams();
@@ -31,9 +35,99 @@ export const Explore = () => {
   const { location, radiusKm, isLocationSet, openLocationModal, requestAutoLocation, loading: locationLoading, error: locationError } = useLocationContext();
   const { filters, updateFilters } = useFilters();
   const { recentlyViewed } = useRecentlyViewed();
+  const [luckyProduct, setLuckyProduct] = useState<Product | null>(null);
+  const [luckyLoading, setLuckyLoading] = useState(false);
   const { products, total, loading, error, currentPage, totalPages, fetchProducts, goToPage, clearProducts } = usePaginatedProducts();
   const page = parseInt(searchParams.get('page') || '1', 10);
   const previousFetchInputsRef = useRef<{ page: number; nonPageKey: string } | null>(null);
+
+  // Fix 1: Dismissable location prompt
+  const [locationPromptDismissed, setLocationPromptDismissed] = useState(() => {
+    return localStorage.getItem(LOCATION_PROMPT_DISMISSED_KEY) === 'true';
+  });
+  const dismissLocationPrompt = useCallback(() => {
+    setLocationPromptDismissed(true);
+    localStorage.setItem(LOCATION_PROMPT_DISMISSED_KEY, 'true');
+  }, []);
+
+  const handleRandomDeal = async () => {
+    setLuckyLoading(true);
+    try {
+      const params: Record<string, number> = {};
+      if (location && isLocationSet) {
+        params.lat = location.lat;
+        params.lon = location.lon;
+        params.radius_km = radiusKm;
+      }
+      const { data } = await api.get('/products/random-deal', { params });
+      setLuckyProduct(data);
+    } catch {
+      // no deals available
+    } finally {
+      setLuckyLoading(false);
+    }
+  };
+
+  // Fix 9: Infinite scroll on mobile
+  const [isMobile, setIsMobile] = useState(() => window.innerWidth < 768);
+  const [mobileProducts, setMobileProducts] = useState<Product[]>([]);
+  const [mobileLoadingMore, setMobileLoadingMore] = useState(false);
+  const sentinelRef = useRef<HTMLDivElement>(null);
+  const mobilePageRef = useRef(1);
+
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 767px)');
+    const handler = (e: MediaQueryListEvent) => setIsMobile(e.matches);
+    mq.addEventListener('change', handler);
+    return () => mq.removeEventListener('change', handler);
+  }, []);
+
+  // Reset mobile products when filters/location change (not page)
+  useEffect(() => {
+    if (isMobile) {
+      setMobileProducts([]);
+      mobilePageRef.current = 1;
+    }
+  }, [filters, location, radiusKm, isLocationSet, isMobile]);
+
+  // Accumulate products for infinite scroll on mobile
+  useEffect(() => {
+    if (isMobile && products.length > 0) {
+      if (currentPage === 1) {
+        setMobileProducts(products);
+      } else {
+        setMobileProducts((prev) => {
+          const existingIds = new Set(prev.map((p) => p.id));
+          const newProducts = products.filter((p) => !existingIds.has(p.id));
+          return [...prev, ...newProducts];
+        });
+      }
+      setMobileLoadingMore(false);
+      mobilePageRef.current = currentPage;
+    }
+  }, [products, currentPage, isMobile]);
+
+  // Intersection observer for infinite scroll
+  useEffect(() => {
+    if (!isMobile || !sentinelRef.current) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const entry = entries[0];
+        if (entry.isIntersecting && !loading && !mobileLoadingMore && currentPage < totalPages) {
+          const nextPage = mobilePageRef.current + 1;
+          setMobileLoadingMore(true);
+          const newParams = new URLSearchParams(searchParams);
+          newParams.set('page', nextPage.toString());
+          setSearchParams(newParams, { replace: true });
+        }
+      },
+      { rootMargin: '300px' }
+    );
+
+    observer.observe(sentinelRef.current);
+    return () => observer.disconnect();
+  }, [isMobile, loading, mobileLoadingMore, currentPage, totalPages, searchParams, setSearchParams]);
 
   useEffect(() => {
     setSearchQuery(filters.query || '');
@@ -135,6 +229,7 @@ export const Explore = () => {
   };
 
   return (
+    <>
       <div className="min-h-screen bg-secondary">
         <div className="sticky top-0 z-50 bg-secondary">
           <Header
@@ -156,30 +251,38 @@ export const Explore = () => {
           <main className="flex-1 overflow-y-auto min-h-screen overscroll-none">
             <CategoryBar />
             <div className="max-w-6xl mx-auto px-4 py-6 pb-32">
-              {/* Location banner — soft prompt instead of gate */}
-              {!isLocationSet && (
-                <div className="mb-4 flex items-center gap-3 p-3 bg-primary/5 border border-primary/15 rounded-lg">
-                  <MapPin className="h-4 w-4 text-primary flex-shrink-0" />
-                  <p className="text-sm text-muted-foreground flex-1">
-                    Set your location to see store distances and nearby prices.
-                  </p>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={requestAutoLocation}
-                    disabled={locationLoading}
-                    className="flex-shrink-0"
+              {/* Fix 1: Dismissable location prompt — prominent on first visit */}
+              {!isLocationSet && !locationPromptDismissed && (
+                <div className="mb-6 p-4 bg-primary/5 border border-primary/15 rounded-xl relative">
+                  <button
+                    onClick={dismissLocationPrompt}
+                    className="absolute top-3 right-3 text-muted-foreground hover:text-foreground p-0.5"
+                    aria-label="Dismiss location prompt"
                   >
-                    {locationLoading ? 'Locating...' : 'Enable'}
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={openLocationModal}
-                    className="flex-shrink-0"
-                  >
-                    Set manually
-                  </Button>
+                    <X className="h-4 w-4" />
+                  </button>
+                  <div className="flex items-start gap-4">
+                    <div className="flex-shrink-0 w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
+                      <Navigation className="h-5 w-5 text-primary" />
+                    </div>
+                    <div className="flex-1 min-w-0 pr-4">
+                      <p className="text-sm font-semibold">See prices at stores near you</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        Enable location to compare prices, sort by distance, and find the cheapest store for your trolley.
+                      </p>
+                      {locationError && (
+                        <p className="text-xs text-destructive mt-1">{locationError}</p>
+                      )}
+                      <div className="flex items-center gap-2 mt-3">
+                        <Button size="sm" onClick={requestAutoLocation} disabled={locationLoading}>
+                          {locationLoading ? 'Locating...' : 'Use My Location'}
+                        </Button>
+                        <Button size="sm" variant="outline" onClick={openLocationModal}>
+                          Set Manually
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               )}
 
@@ -233,6 +336,16 @@ export const Explore = () => {
                           : `${(currentPage - 1) * 24 + 1}\u2013${Math.min(currentPage * 24, total)} of ${total.toLocaleString()}`}
                     </span>
                     <div className="flex items-center gap-2">
+                      <Button
+                        onClick={handleRandomDeal}
+                        variant="outline"
+                        size="sm"
+                        disabled={luckyLoading}
+                        className="hidden sm:flex"
+                      >
+                        <Sparkles className="h-3.5 w-3.5 mr-1" />
+                        {luckyLoading ? '...' : 'Lucky'}
+                      </Button>
                       <span className="text-xs text-muted-foreground hidden sm:inline">Sort by</span>
                       <SortDropdown
                         value={filters.sort || SortOption.CHEAPEST}
@@ -241,52 +354,73 @@ export const Explore = () => {
                     </div>
                   </div>
 
-                  <ProductGrid
-                    products={products}
-                    loading={loading}
-                  />
+                  {/* Fix 9: On mobile use infinite scroll, on desktop use pagination */}
+                  {isMobile ? (
+                    <>
+                      <ProductGrid
+                        products={mobileProducts.length > 0 ? mobileProducts : products}
+                        loading={loading && mobileProducts.length === 0}
+                      />
+                      {mobileLoadingMore && (
+                        <div className="flex justify-center py-6">
+                          <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+                        </div>
+                      )}
+                      {/* Sentinel for intersection observer */}
+                      {!loading && currentPage < totalPages && (
+                        <div ref={sentinelRef} className="h-1" />
+                      )}
+                    </>
+                  ) : (
+                    <>
+                      <ProductGrid
+                        products={products}
+                        loading={loading}
+                      />
 
-                  {/* Pagination */}
-                  {!loading && products.length > 0 && totalPages > 1 && (
-                    <div className="mt-6">
-                      <Pagination>
-                        <PaginationContent>
-                          <PaginationItem>
-                            <PaginationPrevious
-                              onClick={() => currentPage > 1 && handlePageChange(currentPage - 1)}
-                              className={currentPage === 1 ? 'pointer-events-none opacity-50' : ''}
-                            />
-                          </PaginationItem>
-
-                          {pageNumbers.map((pageNum, idx) =>
-                            pageNum === 'ellipsis' ? (
-                              <PaginationItem key={`ellipsis-${idx}`}>
-                                <PaginationEllipsis />
+                      {/* Desktop pagination */}
+                      {!loading && products.length > 0 && totalPages > 1 && (
+                        <div className="mt-6">
+                          <Pagination>
+                            <PaginationContent>
+                              <PaginationItem>
+                                <PaginationPrevious
+                                  onClick={() => currentPage > 1 && handlePageChange(currentPage - 1)}
+                                  className={currentPage === 1 ? 'pointer-events-none opacity-50' : ''}
+                                />
                               </PaginationItem>
-                            ) : (
-                              <PaginationItem key={pageNum}>
-                                <PaginationLink
-                                  onClick={() => handlePageChange(pageNum)}
-                                  isActive={currentPage === pageNum}
-                                >
-                                  {pageNum}
-                                </PaginationLink>
-                              </PaginationItem>
-                            )
-                          )}
 
-                          <PaginationItem>
-                            <PaginationNext
-                              onClick={() => currentPage < totalPages && handlePageChange(currentPage + 1)}
-                              className={currentPage === totalPages ? 'pointer-events-none opacity-50' : ''}
-                            />
-                          </PaginationItem>
-                        </PaginationContent>
-                      </Pagination>
-                    </div>
+                              {pageNumbers.map((pageNum, idx) =>
+                                pageNum === 'ellipsis' ? (
+                                  <PaginationItem key={`ellipsis-${idx}`}>
+                                    <PaginationEllipsis />
+                                  </PaginationItem>
+                                ) : (
+                                  <PaginationItem key={pageNum}>
+                                    <PaginationLink
+                                      onClick={() => handlePageChange(pageNum)}
+                                      isActive={currentPage === pageNum}
+                                    >
+                                      {pageNum}
+                                    </PaginationLink>
+                                  </PaginationItem>
+                                )
+                              )}
+
+                              <PaginationItem>
+                                <PaginationNext
+                                  onClick={() => currentPage < totalPages && handlePageChange(currentPage + 1)}
+                                  className={currentPage === totalPages ? 'pointer-events-none opacity-50' : ''}
+                                />
+                              </PaginationItem>
+                            </PaginationContent>
+                          </Pagination>
+                        </div>
+                      )}
+                    </>
                   )}
 
-                  {!loading && products.length === 0 && (
+                  {!loading && (isMobile ? mobileProducts : products).length === 0 && (
                     <div className="text-center py-12">
                       <p className="text-muted-foreground">
                         No products found. Try adjusting your filters.
@@ -299,6 +433,13 @@ export const Explore = () => {
         </div>
 
       </div>
+
+      <QuickView
+        product={luckyProduct}
+        isOpen={!!luckyProduct}
+        onClose={() => setLuckyProduct(null)}
+      />
+    </>
   );
 };
 

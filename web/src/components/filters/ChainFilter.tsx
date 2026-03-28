@@ -11,6 +11,8 @@ const chains: { value: ChainType; label: string }[] = [
   { value: 'paknsave', label: "PAK'nSAVE" },
   { value: 'countdown', label: 'Woolworths' },
   { value: 'new_world', label: 'New World' },
+  { value: 'mad_butcher', label: 'Mad Butcher' },
+  { value: 'prestons', label: "Preston's" },
 ];
 
 export const ChainFilter = ({ selected, onChange }: ChainFilterProps) => {

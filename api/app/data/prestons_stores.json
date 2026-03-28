@@ -1,0 +1,18 @@
+[
+  {
+    "id": "prestons-porirua",
+    "name": "Porirua",
+    "address": "Harbourside, 16 Parumoana Street, Porirua 5022",
+    "region": "Wellington",
+    "lat": -41.1340,
+    "lon": 174.8410
+  },
+  {
+    "id": "prestons-wellington",
+    "name": "Wellington",
+    "address": "25 Chaffers Street, Te Aro, Wellington 6011",
+    "region": "Wellington",
+    "lat": -41.2920,
+    "lon": 174.7840
+  }
+]

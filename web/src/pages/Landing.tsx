@@ -11,10 +11,11 @@ import { useProducts } from '@/hooks/useProducts';
 import { useLocationContext } from '@/contexts/LocationContext';
 import { useStores } from '@/hooks/useStores';
 import { useAuth } from '@/contexts/AuthContext';
-import { Search, ArrowRight, MapPin, ShoppingCart, UtensilsCrossed, User, LogOut, Navigation } from 'lucide-react';
+import { Search, ArrowRight, MapPin, ShoppingCart, UtensilsCrossed, User, LogOut, Navigation, Sparkles } from 'lucide-react';
 import { useTrolleyContext } from '@/contexts/TrolleyContext';
-import { SortOption } from '@/types';
+import { SortOption, Product } from '@/types';
 import { api } from '@/lib/api';
+import { QuickView } from '@/components/products/QuickView';
 import { useIntersectionObserver } from '@/hooks/useIntersectionObserver';
 
 /* ------------------------------------------------------------------ */
@@ -73,6 +74,8 @@ export const Landing = () => {
   const [tempRadius, setTempRadius] = useState(radiusKm);
   const [shouldLoadMap, setShouldLoadMap] = useState(false);
   const [globalStats, setGlobalStats] = useState<{ total_comparisons: number; total_savings: number } | null>(null);
+  const [luckyProduct, setLuckyProduct] = useState<Product | null>(null);
+  const [luckyLoading, setLuckyLoading] = useState(false);
   const mapRef = useIntersectionObserver({
     enabled: Boolean(location),
     onIntersect: () => setShouldLoadMap(true),
@@ -151,6 +154,24 @@ export const Landing = () => {
 
   const handleViewAllDeals = () => {
     navigate('/explore?promo_only=true');
+  };
+
+  const handleRandomDeal = async () => {
+    setLuckyLoading(true);
+    try {
+      const params: Record<string, number> = {};
+      if (location) {
+        params.lat = location.lat;
+        params.lon = location.lon;
+        params.radius_km = radiusKm;
+      }
+      const { data } = await api.get('/products/random-deal', { params });
+      setLuckyProduct(data);
+    } catch {
+      // silent — no deals available
+    } finally {
+      setLuckyLoading(false);
+    }
   };
 
   return (
@@ -364,7 +385,17 @@ export const Landing = () => {
                 </p>
               )}
             </Reveal>
-            <Reveal className="md:col-span-4 flex md:justify-end items-end" delay={0.08}>
+            <Reveal className="md:col-span-4 flex md:justify-end items-end gap-2" delay={0.08}>
+              <Button
+                onClick={handleRandomDeal}
+                variant="outline"
+                size="sm"
+                className="font-sans"
+                disabled={luckyLoading}
+              >
+                <Sparkles className="h-4 w-4 mr-1" />
+                {luckyLoading ? 'Finding...' : "I'm Feeling Lucky"}
+              </Button>
               <Button
                 onClick={handleViewAllDeals}
                 variant="ghost"
@@ -568,6 +599,13 @@ export const Landing = () => {
           </Reveal>
         </div>
       </section>
+
+      {/* Random deal QuickView */}
+      <QuickView
+        product={luckyProduct}
+        isOpen={!!luckyProduct}
+        onClose={() => setLuckyProduct(null)}
+      />
     </div>
   );
 };

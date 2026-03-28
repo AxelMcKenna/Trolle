@@ -11,6 +11,8 @@ export const chainColors: Record<ChainType, string> = {
   countdown: '#007837',       // Woolworths green
   new_world: '#e11a2c',       // Brand red
   paknsave: '#ffd600',        // Brand yellow
+  mad_butcher: '#d42b1e',     // Mad Butcher red
+  prestons: '#1a1a1a',        // Preston's black
 };
 
 /**
@@ -20,6 +22,8 @@ export const chainNames: Record<ChainType, string> = {
   countdown: 'Woolworths',
   new_world: 'New World',
   paknsave: "PAK'nSAVE",
+  mad_butcher: 'Mad Butcher',
+  prestons: "Preston's",
 };
 
 /**
@@ -29,6 +33,8 @@ export const chainColorClasses: Record<ChainType, string> = {
   countdown: 'bg-[#007837]',
   new_world: 'bg-[#e11a2c]',
   paknsave: 'bg-[#ffd600]',
+  mad_butcher: 'bg-[#d42b1e]',
+  prestons: 'bg-[#1a1a1a]',
 };
 
 /**

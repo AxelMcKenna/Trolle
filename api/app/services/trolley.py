@@ -250,4 +250,129 @@ async def compare_trolley(
     }
 
 
-__all__ = ["compare_trolley"]
+async def split_compare_trolley(
+    session: AsyncSession,
+    *,
+    items: list[dict],
+    lat: float,
+    lon: float,
+    radius_km: float,
+    max_stores: int = 2,
+    loyalty_cards: dict[str, bool] | None = None,
+) -> dict:
+    """Optimize a trolley split across up to max_stores stores.
+
+    Reuses compare_trolley to get per-store breakdowns, then finds the
+    optimal assignment of items to a subset of stores.
+    """
+    from itertools import combinations
+
+    # Get full comparison first
+    comparison = await compare_trolley(
+        session,
+        items=items,
+        lat=lat,
+        lon=lon,
+        radius_km=radius_km,
+        loyalty_cards=loyalty_cards,
+    )
+
+    store_breakdowns = comparison["stores"]
+    if not store_breakdowns:
+        return {
+            "single_best": None,
+            "single_best_total": 0,
+            "splits": [],
+            "savings_vs_single": 0,
+        }
+
+    single_best = store_breakdowns[0]
+    single_best_total = single_best["estimated_total"]
+
+    # Build price matrix: store_idx -> {source_product_id -> (price, item_data)}
+    item_ids = [item["product_id"] for item in items]
+    quantity_map = {item["product_id"]: item["quantity"] for item in items}
+
+    store_prices: list[dict] = []  # list of {source_pid: effective_price_or_None}
+    for sb in store_breakdowns:
+        prices = {}
+        for si in sb["items"]:
+            if si["available"] and si["price"] is not None:
+                prices[si["source_product_id"]] = si
+        store_prices.append(prices)
+
+    # Prune to top N stores by item availability for combinatorics
+    top_n = min(10, len(store_breakdowns))
+    candidate_indices = list(range(top_n))
+
+    best_splits: list[dict] = []
+
+    for n_stores in range(2, max_stores + 1):
+        best_total = float("inf")
+        best_assignment: dict | None = None
+
+        for combo in combinations(candidate_indices, n_stores):
+            total = 0.0
+            all_covered = True
+            assignments: dict[int, list] = {idx: [] for idx in combo}
+
+            for item_id in item_ids:
+                pid = str(item_id) if not isinstance(item_id, str) else item_id
+                qty = quantity_map[item_id]
+
+                # Find cheapest store in this combo that has the item
+                best_store_idx = None
+                best_price = float("inf")
+
+                for idx in combo:
+                    item_data = store_prices[idx].get(pid)
+                    if item_data and item_data["price"] is not None:
+                        if item_data["price"] < best_price:
+                            best_price = item_data["price"]
+                            best_store_idx = idx
+
+                if best_store_idx is not None:
+                    total += round(best_price * qty, 2)
+                    assignments[best_store_idx].append(store_prices[best_store_idx][pid])
+                else:
+                    all_covered = False
+
+            if total < best_total:
+                best_total = total
+                best_assignment = {
+                    "assignments": [
+                        {
+                            "store_id": store_breakdowns[idx]["store_id"],
+                            "store_name": store_breakdowns[idx]["store_name"],
+                            "chain": store_breakdowns[idx]["chain"],
+                            "distance_km": store_breakdowns[idx]["distance_km"],
+                            "items": assigned_items,
+                            "subtotal": round(
+                                sum(
+                                    (i["price"] or 0) * i["quantity"]
+                                    for i in assigned_items
+                                ),
+                                2,
+                            ),
+                        }
+                        for idx, assigned_items in assignments.items()
+                        if assigned_items  # skip empty stores
+                    ],
+                    "grand_total": round(best_total, 2),
+                    "store_count": n_stores,
+                }
+
+        if best_assignment:
+            best_splits.append(best_assignment)
+
+    savings = round(single_best_total - (best_splits[-1]["grand_total"] if best_splits else single_best_total), 2)
+
+    return {
+        "single_best": single_best,
+        "single_best_total": single_best_total,
+        "splits": best_splits,
+        "savings_vs_single": max(0, savings),
+    }
+
+
+__all__ = ["compare_trolley", "split_compare_trolley"]

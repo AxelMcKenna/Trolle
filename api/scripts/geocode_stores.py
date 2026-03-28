@@ -67,7 +67,7 @@ async def geocode_store(client: httpx.AsyncClient, name: str, address: str | Non
             logger.warning("Geocode query %r failed: %s", query, e)
 
         # Respect Nominatim rate limit
-        await asyncio.sleep(1.05)
+        await asyncio.sleep(1.5)
 
     return None
 

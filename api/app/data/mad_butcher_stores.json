@@ -1,0 +1,154 @@
+[
+  {
+    "id": "mb-glen-innes",
+    "name": "Glen Innes",
+    "address": "172 Apirana Avenue, Glen Innes, Auckland 1072",
+    "region": "Auckland",
+    "lat": -36.8774,
+    "lon": 174.8565
+  },
+  {
+    "id": "mb-mt-roskill",
+    "name": "Mt Roskill",
+    "address": "1277 Dominion Road, Mt Roskill, Auckland 1041",
+    "region": "Auckland",
+    "lat": -36.9130,
+    "lon": 174.7360
+  },
+  {
+    "id": "mb-takanini",
+    "name": "Takanini",
+    "address": "7 Walters Road, Takanini, Auckland 2112",
+    "region": "Auckland",
+    "lat": -37.0468,
+    "lon": 174.9310
+  },
+  {
+    "id": "mb-pukekohe",
+    "name": "Pukekohe",
+    "address": "89 King Street, Pukekohe, Auckland 2120",
+    "region": "Auckland",
+    "lat": -37.2005,
+    "lon": 174.9010
+  },
+  {
+    "id": "mb-chartwell",
+    "name": "Chartwell",
+    "address": "Chartwell Shopping Centre, Comries Road, Hamilton 3210",
+    "region": "Waikato",
+    "lat": -37.7580,
+    "lon": 175.3060
+  },
+  {
+    "id": "mb-kahikatea-drive",
+    "name": "Kahikatea Drive",
+    "address": "Kahikatea Drive, Hamilton 3206",
+    "region": "Waikato",
+    "lat": -37.7930,
+    "lon": 175.2830
+  },
+  {
+    "id": "mb-rotorua",
+    "name": "Rotorua",
+    "address": "1181 Fenton Street, Rotorua 3010",
+    "region": "Bay of Plenty",
+    "lat": -38.1590,
+    "lon": 176.2530
+  },
+  {
+    "id": "mb-te-ngae",
+    "name": "Te Ngae",
+    "address": "Te Ngae Road, Rotorua 3010",
+    "region": "Bay of Plenty",
+    "lat": -38.1260,
+    "lon": 176.2850
+  },
+  {
+    "id": "mb-new-plymouth",
+    "name": "New Plymouth",
+    "address": "298 Devon Street East, New Plymouth 4310",
+    "region": "Taranaki",
+    "lat": -39.0580,
+    "lon": 174.0930
+  },
+  {
+    "id": "mb-wanganui",
+    "name": "Wanganui",
+    "address": "72 Victoria Avenue, Wanganui 4500",
+    "region": "Manawatu-Whanganui",
+    "lat": -39.9310,
+    "lon": 175.0480
+  },
+  {
+    "id": "mb-napier",
+    "name": "Napier",
+    "address": "260 Kennedy Road, Napier 4110",
+    "region": "Hawkes Bay",
+    "lat": -39.4960,
+    "lon": 176.8720
+  },
+  {
+    "id": "mb-hastings",
+    "name": "Hastings",
+    "address": "700 Heretaunga Street West, Hastings 4122",
+    "region": "Hawkes Bay",
+    "lat": -39.6370,
+    "lon": 176.8310
+  },
+  {
+    "id": "mb-palmerston-north",
+    "name": "Palmerston North",
+    "address": "422 Ferguson Street, Palmerston North 4410",
+    "region": "Manawatu-Whanganui",
+    "lat": -40.3530,
+    "lon": 175.6150
+  },
+  {
+    "id": "mb-upper-hutt",
+    "name": "Upper Hutt",
+    "address": "1098 Fergusson Drive, Upper Hutt 5018",
+    "region": "Wellington",
+    "lat": -41.1240,
+    "lon": 175.0700
+  },
+  {
+    "id": "mb-lower-hutt",
+    "name": "Lower Hutt",
+    "address": "91 High Street, Lower Hutt 5010",
+    "region": "Wellington",
+    "lat": -41.2090,
+    "lon": 174.9080
+  },
+  {
+    "id": "mb-porirua",
+    "name": "Porirua",
+    "address": "2 Hartham Place, Porirua 5022",
+    "region": "Wellington",
+    "lat": -41.1340,
+    "lon": 174.8400
+  },
+  {
+    "id": "mb-nelson",
+    "name": "Nelson",
+    "address": "81 Achilles Avenue, Nelson 7010",
+    "region": "Nelson",
+    "lat": -41.2880,
+    "lon": 173.2440
+  },
+  {
+    "id": "mb-ferry-road",
+    "name": "Ferry Road",
+    "address": "737 Ferry Road, Woolston, Christchurch 8023",
+    "region": "Canterbury",
+    "lat": -43.5530,
+    "lon": 172.6690
+  },
+  {
+    "id": "mb-riccarton",
+    "name": "Riccarton",
+    "address": "111 Riccarton Road, Riccarton, Christchurch 8041",
+    "region": "Canterbury",
+    "lat": -43.5300,
+    "lon": 172.5960
+  }
+]

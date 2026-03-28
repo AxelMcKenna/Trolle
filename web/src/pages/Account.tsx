@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { toast } from "sonner";
-import { LogOut, User, ShoppingCart, Trash2, Pencil, ArrowLeft, UtensilsCrossed, Bookmark, Crown, TrendingUp, Store, BarChart3 } from "lucide-react";
+import { LogOut, User, ShoppingCart, Trash2, Pencil, ArrowLeft, UtensilsCrossed, Bookmark, Crown, TrendingUp, Store, BarChart3, Bell } from "lucide-react";
 import everydayRewardsLogo from "@/assets/logos/everyday_rewards.svg";
 import nwClubcardLogo from "@/assets/logos/nw_clubcard.svg";
 import paknsaveClubcardLogo from "@/assets/logos/paknsave_clubcard.svg";
@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { usePriceAlerts } from "@/hooks/usePriceAlerts";
 import { api } from "@/lib/api";
 
 interface UserProfile {
@@ -33,6 +34,7 @@ const Account = () => {
   const { trolleys, loading: trolleysLoading, fetchTrolleys, deleteTrolley, updateTrolley } = useSavedTrolleys();
   const { recipes: savedRecipes, loading: recipesLoading, fetchSavedRecipes, unsaveRecipe } = useSavedRecipes();
   const { stats: savingsStats, history: comparisonHistory, loading: savingsLoading } = useSavingsStats();
+  const { alerts, loading: alertsLoading, fetchAlerts, deleteAlert } = usePriceAlerts();
 
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [displayName, setDisplayName] = useState("");
@@ -60,7 +62,8 @@ const Account = () => {
     loadProfile();
     fetchTrolleys();
     fetchSavedRecipes();
-  }, [fetchTrolleys, fetchSavedRecipes]);
+    fetchAlerts();
+  }, [fetchTrolleys, fetchSavedRecipes, fetchAlerts]);
 
   const handleUpdateName = async () => {
     try {
@@ -391,6 +394,64 @@ const Account = () => {
                       <Trash2 className="h-3.5 w-3.5" />
                     </Button>
                   </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Price Alerts Section */}
+        <div className="bg-white rounded-xl shadow-sm border p-6">
+          <h2 className="font-semibold text-lg mb-4 flex items-center gap-2">
+            <Bell className="w-5 h-5 text-primary" />
+            Price Alerts
+          </h2>
+
+          {alertsLoading ? (
+            <div className="py-8 text-center text-gray-400">Loading...</div>
+          ) : alerts.length === 0 ? (
+            <div className="py-8 text-center text-gray-400">
+              <Bell className="w-10 h-10 mx-auto mb-2 opacity-50" />
+              <p>No price alerts set</p>
+              <p className="text-sm mt-1">Set alerts from any product to get notified when prices drop.</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {alerts.map((a) => (
+                <div key={a.id} className="flex items-center gap-3 border rounded-lg p-3 hover:bg-gray-50 transition-colors">
+                  {a.product_image_url && (
+                    <img src={a.product_image_url} alt="" className="w-10 h-10 object-contain flex-shrink-0 rounded" />
+                  )}
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium truncate">{a.product_name}</p>
+                    <div className="flex items-center gap-2 text-xs text-gray-500">
+                      <span>Target: ${a.target_price.toFixed(2)}</span>
+                      <span>&middot;</span>
+                      <span>Current: ${a.current_price.toFixed(2)}</span>
+                    </div>
+                    {a.triggered_at && (
+                      <p className="text-xs text-green-600 font-medium mt-0.5">
+                        Triggered {new Date(a.triggered_at).toLocaleDateString()}
+                      </p>
+                    )}
+                    {!a.triggered_at && a.is_active && (
+                      <p className="text-xs text-amber-600 mt-0.5">Watching...</p>
+                    )}
+                  </div>
+                  {a.is_active && (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={async () => {
+                        await deleteAlert(a.id);
+                        toast.success("Alert removed");
+                      }}
+                      title="Remove alert"
+                      className="text-red-500 hover:text-red-700 flex-shrink-0"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
+                  )}
                 </div>
               ))}
             </div>

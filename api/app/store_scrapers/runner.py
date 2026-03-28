@@ -35,12 +35,16 @@ _JSON_STORE_CHAINS: Dict[str, str] = {
     "countdown": "countdown_stores.json",
     "paknsave": "paknsave_stores.json",
     "new_world": "newworld_stores.json",
+    "mad_butcher": "mad_butcher_stores.json",
+    "prestons": "prestons_stores.json",
 }
 
 CHAIN_DISPLAY_NAMES: Dict[str, str] = {
     "countdown": "Woolworths",
     "new_world": "New World",
     "paknsave": "PAK'nSAVE",
+    "mad_butcher": "Mad Butcher",
+    "prestons": "Preston's",
 }
 
 

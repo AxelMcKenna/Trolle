@@ -16,6 +16,8 @@ from app.db.models import Product, TrolleyComparison
 from app.db.session import get_async_session, async_transaction
 from app.middleware import get_limiter
 from app.schemas.trolley import (
+    SplitCompareRequest,
+    SplitCompareResponse,
     TrolleyCompareRequest,
     TrolleyCompareResponse,
     TrolleySuggestionsRequest,
@@ -23,7 +25,7 @@ from app.schemas.trolley import (
 )
 from app.services.cache import cached_json
 from app.services.matching import find_store_suggestions
-from app.services.trolley import compare_trolley
+from app.services.trolley import compare_trolley, split_compare_trolley
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -153,6 +155,36 @@ async def trolley_suggestions(request: Request, body: TrolleySuggestionsRequest)
         except (ValueError, KeyError) as exc:
             logger.exception("Trolley suggestions failed: %s", exc)
             raise HTTPException(status_code=500, detail="Trolley suggestions failed")
+
+
+@router.post("/split-compare", response_model=SplitCompareResponse)
+@limiter.limit("10/minute")
+async def trolley_split_compare(
+    request: Request,
+    body: SplitCompareRequest,
+    user: Optional[UserContext] = Depends(optional_user),
+) -> SplitCompareResponse:
+    """Find the optimal split of trolley items across multiple stores."""
+    async with get_async_session() as session:
+        try:
+            result = await split_compare_trolley(
+                session,
+                items=[
+                    {"product_id": item.product_id, "quantity": item.quantity}
+                    for item in body.items
+                ],
+                lat=body.lat,
+                lon=body.lon,
+                radius_km=body.radius_km,
+                max_stores=body.max_stores,
+                loyalty_cards=body.loyalty_cards,
+            )
+            return SplitCompareResponse(**result)
+        except HTTPException:
+            raise
+        except Exception as exc:
+            logger.exception("Split comparison failed: %s", exc)
+            raise HTTPException(status_code=500, detail="Split comparison failed")
 
 
 # --- History & Savings ---

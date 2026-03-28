@@ -4,7 +4,7 @@ import everydayRewardsLogo from '@/assets/logos/everyday_rewards.svg';
 import nwClubcardLogo from '@/assets/logos/nw_clubcard.svg';
 import paknsaveClubcardLogo from '@/assets/logos/paknsave_clubcard.svg';
 
-const programs: Record<ChainType, { name: string; logo: string }> = {
+const programs: Partial<Record<ChainType, { name: string; logo: string }>> = {
   countdown: { name: 'Everyday Rewards', logo: everydayRewardsLogo },
   new_world: { name: 'Clubcard', logo: nwClubcardLogo },
   paknsave: { name: 'Sticky Club', logo: paknsaveClubcardLogo },

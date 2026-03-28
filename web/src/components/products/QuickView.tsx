@@ -1,4 +1,5 @@
-import { ExternalLink, Store, Clock, Package, MapPin, ShoppingCart, Check } from "lucide-react";
+import { lazy, Suspense, useState } from "react";
+import { ExternalLink, Store, Clock, Package, MapPin, ShoppingCart, Check, TrendingDown, ChevronDown, ChevronUp, Bell } from "lucide-react";
 import { Product } from "@/types";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -6,7 +7,9 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
 import { useTrolleyContext } from "@/contexts/TrolleyContext";
+import { useAuth } from "@/contexts/AuthContext";
 import { useRecentlyViewed } from "@/hooks/useRecentlyViewed";
+import { PriceAlertModal } from "./PriceAlertModal";
 import {
   formatPromoEndDate,
   formatDistanceAway,
@@ -14,6 +17,11 @@ import {
   calculateSavingsPercent,
 } from "@/lib/formatters";
 import { LoyaltyBadge } from "./LoyaltyBadge";
+import { Skeleton } from "@/components/ui/skeleton";
+
+const PriceHistoryChart = lazy(() =>
+  import("./PriceHistoryChart").then((m) => ({ default: m.PriceHistoryChart }))
+);
 
 interface QuickViewProps {
   product: Product | null;
@@ -27,7 +35,10 @@ export const QuickView = ({
   onClose,
 }: QuickViewProps) => {
   const { addItem, removeItem, isInTrolley } = useTrolleyContext();
+  const { isAuthenticated } = useAuth();
   const { addViewed } = useRecentlyViewed();
+  const [showHistory, setShowHistory] = useState(false);
+  const [alertModalOpen, setAlertModalOpen] = useState(false);
 
   if (!product) return null;
 
@@ -177,6 +188,29 @@ export const QuickView = ({
               </dl>
             </div>
 
+            {/* Price History */}
+            <div className="mb-4">
+              <button
+                onClick={() => setShowHistory(!showHistory)}
+                className="flex items-center gap-2 text-sm font-semibold text-primary-gray hover:text-primary transition-colors w-full"
+              >
+                <TrendingDown className="h-4 w-4 text-primary" />
+                Price History
+                {showHistory ? (
+                  <ChevronUp className="h-4 w-4 ml-auto" />
+                ) : (
+                  <ChevronDown className="h-4 w-4 ml-auto" />
+                )}
+              </button>
+              {showHistory && (
+                <Suspense fallback={<Skeleton className="h-48 w-full mt-2" />}>
+                  <PriceHistoryChart productId={product.id} />
+                </Suspense>
+              )}
+            </div>
+
+            <Separator className="mb-4" />
+
             {/* Actions */}
             <div className="flex gap-2">
               <Button
@@ -202,6 +236,16 @@ export const QuickView = ({
                   </>
                 )}
               </Button>
+              {isAuthenticated && (
+                <Button
+                  variant="outline"
+                  size="icon"
+                  onClick={() => setAlertModalOpen(true)}
+                  title="Set price alert"
+                >
+                  <Bell className="h-4 w-4" />
+                </Button>
+              )}
               {product.product_url && (
                 <Button asChild className="flex-1 bg-primary hover:bg-accent">
                   <a
@@ -220,6 +264,14 @@ export const QuickView = ({
           </div>
         </div>
       </DialogContent>
+
+      {alertModalOpen && (
+        <PriceAlertModal
+          product={product}
+          isOpen={alertModalOpen}
+          onClose={() => setAlertModalOpen(false)}
+        />
+      )}
     </Dialog>
   );
 };

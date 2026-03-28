@@ -2,17 +2,25 @@ from __future__ import annotations
 
 import json
 import logging
+import random
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from pydantic import BaseModel, Field
-from pydantic import ValidationError
+from geoalchemy2 import Geography
+from pydantic import BaseModel, Field, ValidationError
+from sqlalchemy import and_, cast, func, or_, select
 
 from app.core.config import get_settings
+from app.db.models import Price, PriceHistory, Product, Store
 from app.db.session import get_async_session
 from app.middleware import get_limiter
-from app.schemas.products import ProductDetailSchema, ProductListResponse
+from app.schemas.products import (
+    PriceHistoryResponse,
+    ProductDetailSchema,
+    ProductListResponse,
+)
 from app.schemas.queries import ProductQueryParams
 from app.services.cache import cached_json
 from app.services.search import fetch_product_detail, fetch_products
@@ -104,6 +112,147 @@ async def list_products(params: ProductQueryParams = Depends(_params)) -> Produc
         ttl = settings.cache_ttl_product_list
         payload = await cached_json(cache_key, ttl, producer)
         return ProductListResponse.parse_obj(payload)
+
+
+@router.get("/random-deal")
+async def random_deal(
+    lat: Optional[float] = Query(None),
+    lon: Optional[float] = Query(None),
+    radius_km: Optional[float] = Query(None, ge=1, le=10),
+) -> dict:
+    async with get_async_session() as session:
+        now = datetime.now(timezone.utc)
+
+        # Base filter: active promos only
+        promo_filter = and_(
+            Price.promo_price_nzd.isnot(None),
+            Price.promo_price_nzd < Price.price_nzd,
+            or_(Price.promo_ends_at.is_(None), Price.promo_ends_at > now),
+        )
+
+        query = (
+            select(Product, Price, Store.name.label("store_name"), Store.chain.label("store_chain"))
+            .join(Price, Price.product_id == Product.id)
+            .join(Store, Price.store_id == Store.id)
+            .where(promo_filter)
+        )
+
+        # Location filter
+        if lat is not None and lon is not None and radius_km is not None:
+            point = func.ST_SetSRID(func.ST_MakePoint(lon, lat), 4326)
+            query = query.where(
+                func.ST_DWithin(
+                    Store.geog,
+                    cast(point, Geography),
+                    radius_km * 1000,
+                )
+            )
+
+        # Count matching rows, pick random offset
+        count_query = select(func.count()).select_from(query.subquery())
+        total = (await session.execute(count_query)).scalar() or 0
+
+        if total == 0:
+            raise HTTPException(status_code=404, detail="No deals found")
+
+        offset = random.randint(0, total - 1)
+        row = (await session.execute(query.offset(offset).limit(1))).one()
+
+        product = row[0]
+        price = row[1]
+
+        discount_pct = round((1 - price.promo_price_nzd / price.price_nzd) * 100)
+
+        return {
+            "id": str(product.id),
+            "name": product.name,
+            "brand": product.brand,
+            "category": product.category,
+            "chain": product.chain,
+            "size": product.size,
+            "department": product.department,
+            "subcategory": product.subcategory,
+            "image_url": product.image_url,
+            "product_url": product.product_url,
+            "price": {
+                "store_id": str(price.store_id),
+                "store_name": row.store_name,
+                "chain": row.store_chain,
+                "price_nzd": price.price_nzd,
+                "promo_price_nzd": price.promo_price_nzd,
+                "promo_text": price.promo_text,
+                "promo_ends_at": price.promo_ends_at.isoformat() if price.promo_ends_at else None,
+                "is_member_only": price.is_member_only,
+                "unit_price": product.unit_price,
+                "unit_measure": product.unit_measure,
+                "distance_km": None,
+            },
+            "last_updated": price.price_last_changed_at.isoformat(),
+            "discount_pct": discount_pct,
+        }
+
+
+@router.get("/{product_id}/price-history", response_model=PriceHistoryResponse)
+async def product_price_history(
+    product_id: UUID,
+    store_id: Optional[UUID] = Query(None),
+    days: int = Query(default=90, ge=7, le=365),
+) -> PriceHistoryResponse:
+    async with get_async_session() as session:
+        cache_key = f"price_history:{product_id}:{store_id}:{days}"
+
+        async def producer() -> dict:
+            # Verify product exists
+            prod_result = await session.execute(
+                select(Product.id, Product.name).where(Product.id == product_id)
+            )
+            product_row = prod_result.one_or_none()
+            if not product_row:
+                raise HTTPException(status_code=404, detail="Product not found")
+
+            cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+            query = (
+                select(PriceHistory, Store.name.label("store_name"), Store.chain)
+                .join(Store, PriceHistory.store_id == Store.id)
+                .where(
+                    PriceHistory.product_id == product_id,
+                    PriceHistory.recorded_at >= cutoff,
+                )
+                .order_by(PriceHistory.recorded_at.asc())
+            )
+            if store_id:
+                query = query.where(PriceHistory.store_id == store_id)
+
+            result = await session.execute(query)
+            rows = result.all()
+
+            # Group by store
+            store_groups: dict[str, dict] = {}
+            for row in rows:
+                ph = row[0]
+                sid = str(ph.store_id)
+                if sid not in store_groups:
+                    store_groups[sid] = {
+                        "store_id": sid,
+                        "store_name": row.store_name,
+                        "chain": row.chain,
+                        "data_points": [],
+                    }
+                store_groups[sid]["data_points"].append({
+                    "price_nzd": ph.price_nzd,
+                    "promo_price_nzd": ph.promo_price_nzd,
+                    "is_member_only": ph.is_member_only,
+                    "recorded_at": ph.recorded_at.isoformat(),
+                })
+
+            return {
+                "product_id": str(product_row.id),
+                "product_name": product_row.name,
+                "stores": list(store_groups.values()),
+            }
+
+        payload = await cached_json(cache_key, 3600, producer)
+        return PriceHistoryResponse.parse_obj(payload)
 
 
 @router.get("/{product_id}", response_model=ProductDetailSchema)

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { Search, MapPin, ShoppingCart, UtensilsCrossed, User, LogOut, Clock, X } from "lucide-react";
+import { Search, MapPin, ShoppingCart, UtensilsCrossed, User, LogOut, Clock, X, Bell } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 import { useLocationContext } from "@/contexts/LocationContext";
 import { useTrolleyContext } from "@/contexts/TrolleyContext";
@@ -7,6 +7,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useSearchHistory } from "@/hooks/useSearchHistory";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { useNotifications } from "@/hooks/usePriceAlerts";
 
 interface HeaderProps {
   query?: string;
@@ -29,11 +30,21 @@ export const Header = ({
   const { radiusKm, isLocationSet, openLocationModal } = useLocationContext();
   const { itemCount } = useTrolleyContext();
   const { isAuthenticated, user, displayName, signOut } = useAuth();
+  const { notifications, fetchNotifications, markRead } = useNotifications();
   const navigate = useNavigate();
   const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const [notifOpen, setNotifOpen] = useState(false);
   const [searchFocused, setSearchFocused] = useState(false);
   const { recentSearches, addSearch, clearHistory } = useSearchHistory();
   const searchContainerRef = useRef<HTMLDivElement>(null);
+
+  // Poll for notifications every 60s when authenticated
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    fetchNotifications();
+    const interval = setInterval(() => fetchNotifications(), 60_000);
+    return () => clearInterval(interval);
+  }, [isAuthenticated, fetchNotifications]);
 
   // Close search history on outside click
   useEffect(() => {
@@ -186,6 +197,62 @@ export const Header = ({
                 )}
               </Button>
             </Link>
+            {isAuthenticated && (
+              <div className="relative">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-white hover:bg-white/10 relative"
+                  aria-label={`Notifications${notifications.unread_count > 0 ? ` (${notifications.unread_count} unread)` : ''}`}
+                  onClick={() => setNotifOpen(!notifOpen)}
+                >
+                  <Bell className="h-4 w-4" />
+                  {notifications.unread_count > 0 && (
+                    <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] font-bold rounded-full h-4 min-w-[16px] flex items-center justify-center px-0.5">
+                      {notifications.unread_count}
+                    </span>
+                  )}
+                </Button>
+                {notifOpen && (
+                  <>
+                    <div className="fixed inset-0 z-40" onClick={() => setNotifOpen(false)} />
+                    <div className="absolute right-0 top-full mt-1 w-72 bg-white rounded-lg shadow-lg border z-50 overflow-hidden">
+                      <div className="flex items-center justify-between px-3 py-2 border-b">
+                        <span className="text-sm font-semibold text-gray-900">Notifications</span>
+                        {notifications.unread_count > 0 && (
+                          <button
+                            onClick={() => markRead()}
+                            className="text-xs text-primary hover:underline"
+                          >
+                            Mark all read
+                          </button>
+                        )}
+                      </div>
+                      <div className="max-h-64 overflow-y-auto">
+                        {notifications.items.length === 0 ? (
+                          <div className="px-3 py-6 text-center text-sm text-gray-400">
+                            No notifications yet
+                          </div>
+                        ) : (
+                          notifications.items.map((n) => (
+                            <div
+                              key={n.id}
+                              className={`px-3 py-2.5 border-b last:border-0 ${!n.is_read ? 'bg-primary/5' : ''}`}
+                            >
+                              <p className="text-sm font-medium text-gray-900">{n.title}</p>
+                              <p className="text-xs text-gray-500 mt-0.5">{n.message}</p>
+                              <p className="text-[10px] text-gray-400 mt-1">
+                                {new Date(n.created_at).toLocaleDateString()}
+                              </p>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
             <Button
               variant="ghost"
               size="sm"
