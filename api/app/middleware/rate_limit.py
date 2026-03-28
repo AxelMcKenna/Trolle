@@ -32,7 +32,7 @@ def get_limiter() -> Limiter:
 
     limiter = Limiter(
         key_func=get_remote_address,
-        default_limits=["60/minute"],  # Default: 60 requests per minute per IP
+        default_limits=["120/minute"],  # Default: 120 requests per minute per IP
         storage_uri=storage_uri,
     )
     return limiter

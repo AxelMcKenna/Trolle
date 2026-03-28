@@ -5,10 +5,15 @@ import logging
 import os
 import sys
 from datetime import datetime, timedelta
+from pathlib import Path
 from typing import Dict, List, Optional
 
+HEARTBEAT_FILE = Path("/tmp/worker-heartbeat")
+
+from app.core.config import get_settings
 from app.core.logging import configure_logging
 from app.scrapers.registry import CHAINS, get_chain_scraper
+from app.services.alerting import send_alert
 
 configure_logging()
 logger = logging.getLogger(__name__)
@@ -18,6 +23,7 @@ logger = logging.getLogger(__name__)
 SCRAPER_INTERVAL_HOURS = 24  # Run scrapers once per day
 SCRAPER_TIMEOUT_MINUTES = 240  # Max time per scraper (grocery catalogs are large)
 SEQUENTIAL_DELAY_SECONDS = 60  # Delay between scrapers to avoid overwhelming system
+SCRAPER_RETRY_DELAY_SECONDS = 300  # Wait 5 min before retrying a failed scraper
 
 
 class WorkerScheduler:
@@ -29,38 +35,55 @@ class WorkerScheduler:
         self.running_chains: Dict[str, asyncio.Task] = {}
 
     async def run_scraper(self, chain: str) -> None:
-        """Run a single scraper with timeout and error handling."""
+        """Run a single scraper with timeout, retry, and alerting."""
         logger.info(f"Starting scraper: {chain}")
         start_time = datetime.utcnow()
+        last_error: Optional[str] = None
 
-        try:
-            scraper = get_chain_scraper(chain)
+        for attempt in range(1, 3):  # max 2 attempts (1 retry)
+            try:
+                scraper = get_chain_scraper(chain)
 
-            # Run with timeout
-            await asyncio.wait_for(
-                scraper.run(),
-                timeout=SCRAPER_TIMEOUT_MINUTES * 60
-            )
+                # Run with timeout
+                await asyncio.wait_for(
+                    scraper.run(),
+                    timeout=SCRAPER_TIMEOUT_MINUTES * 60
+                )
 
-            duration = (datetime.utcnow() - start_time).total_seconds()
-            logger.info(f"Scraper completed: {chain} ({duration:.1f}s)")
-            self.last_run[chain] = datetime.utcnow()
+                duration = (datetime.utcnow() - start_time).total_seconds()
+                logger.info(f"Scraper completed: {chain} ({duration:.1f}s)")
+                self.last_run[chain] = datetime.utcnow()
+                return  # success
 
-        except asyncio.TimeoutError:
-            duration = (datetime.utcnow() - start_time).total_seconds()
-            logger.error(
-                f"Scraper timeout: {chain} (>{duration:.1f}s, limit={SCRAPER_TIMEOUT_MINUTES}m)"
-            )
+            except asyncio.TimeoutError:
+                duration = (datetime.utcnow() - start_time).total_seconds()
+                last_error = f"Timeout after {duration:.0f}s (limit={SCRAPER_TIMEOUT_MINUTES}m)"
+                logger.error(f"Scraper timeout: {chain} — {last_error}")
 
-        except Exception as e:
-            duration = (datetime.utcnow() - start_time).total_seconds()
-            logger.error(f"Scraper failed: {chain} ({duration:.1f}s) - {type(e).__name__}: {e}")
-            logger.exception(e)
+            except Exception as e:
+                duration = (datetime.utcnow() - start_time).total_seconds()
+                last_error = f"{type(e).__name__}: {e}"
+                logger.error(f"Scraper failed: {chain} ({duration:.1f}s) - {last_error}")
+                logger.exception(e)
 
-        finally:
-            # Remove from running tasks
-            if chain in self.running_chains:
-                del self.running_chains[chain]
+            if attempt < 2:
+                logger.info(f"Retrying {chain} in {SCRAPER_RETRY_DELAY_SECONDS}s...")
+                await asyncio.sleep(SCRAPER_RETRY_DELAY_SECONDS)
+                start_time = datetime.utcnow()  # reset for retry timing
+
+        # Both attempts failed — fire alert
+        duration = (datetime.utcnow() - start_time).total_seconds()
+        await send_alert(
+            title=f"Scraper failed: {chain}",
+            message=last_error or "Unknown error after retries",
+            severity="error",
+            chain=chain,
+            duration_seconds=duration,
+        )
+
+        # Remove from running tasks
+        if chain in self.running_chains:
+            del self.running_chains[chain]
 
     async def should_run_scraper(self, chain: str) -> bool:
         """Check if a scraper should run based on schedule."""
@@ -117,10 +140,32 @@ class WorkerScheduler:
                 await asyncio.sleep(SEQUENTIAL_DELAY_SECONDS)
 
 
+async def _check_stale_chains(scheduler: WorkerScheduler) -> None:
+    """Alert if any chain hasn't had a successful run within the stale threshold."""
+    settings = get_settings()
+    threshold = timedelta(hours=settings.stale_threshold_hours)
+    now = datetime.utcnow()
+
+    stale_chains = []
+    for chain in scheduler.chains_to_run:
+        last_run = scheduler.last_run.get(chain)
+        if last_run is None or (now - last_run) > threshold:
+            stale_chains.append(chain)
+
+    if stale_chains:
+        hours = settings.stale_threshold_hours
+        logger.warning(f"Stale chains (no success in >{hours}h): {', '.join(stale_chains)}")
+        await send_alert(
+            title="Stale data detected",
+            message=f"Chains with no successful scrape in >{hours}h: {', '.join(stale_chains)}",
+            severity="warning",
+        )
+
+
 async def main(chains_to_run: Optional[List[str]] = None) -> None:
     """Main worker loop."""
     # Parse flags from command line args
-    parallel = "--parallel" in sys.argv or os.environ.get("TROLLE_PARALLEL", "").lower() in ("1", "true")
+    parallel = "--parallel" in sys.argv or os.environ.get("TROLLE_PARALLEL", "true").lower() in ("1", "true")
     args = [a for a in sys.argv[1:] if a != "--parallel"]
 
     # Parse chains from command line args or env var if not provided
@@ -160,10 +205,13 @@ async def main(chains_to_run: Optional[List[str]] = None) -> None:
     logger.info("Running initial scraper pass...")
     await scheduler.run_all_scrapers(force=True, parallel=parallel)
 
+    HEARTBEAT_FILE.write_text(datetime.utcnow().isoformat())
+
     # Then run on schedule
     while True:
         logger.info("Worker sleeping for 1 hour...")
         await asyncio.sleep(3600)  # Check every hour
+        HEARTBEAT_FILE.write_text(datetime.utcnow().isoformat())
 
         logger.info("Checking for scheduled scraper runs...")
         await scheduler.run_all_scrapers(parallel=parallel)
@@ -175,6 +223,9 @@ async def main(chains_to_run: Optional[List[str]] = None) -> None:
             await run_promo_expiry_cleanup()
         except Exception as e:
             logger.warning(f"Promo expiry cleanup failed: {e}")
+
+        # Check for stale chains (no successful run within threshold)
+        await _check_stale_chains(scheduler)
 
 
 if __name__ == "__main__":

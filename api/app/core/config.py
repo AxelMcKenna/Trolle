@@ -29,6 +29,33 @@ class Settings(BaseSettings):
     admin_username: str = "admin"
     admin_password: str = "admin"
 
+    # Embedding / pgvector
+    embedding_enabled: bool = False
+    embedding_model_name: str = "sentence-transformers/all-MiniLM-L6-v2"
+
+    # Alerting
+    alert_webhook_url: str = ""
+    stale_threshold_hours: float = 36.0
+
+    # Sentry
+    sentry_dsn: str = ""
+
+    # Cache TTLs (seconds)
+    cache_ttl_product_list: int = 300
+    cache_ttl_product_detail: int = 600
+    cache_ttl_stores_nearby: int = 3600
+    cache_ttl_trolley_compare: int = 300
+    cache_ttl_recipe_list: int = 1800
+    cache_ttl_recipe_cost: int = 300
+
+    # Database pool
+    db_pool_size: int = 15
+    db_max_overflow: int = 15
+    db_pool_timeout: int = 10
+
+    # Supabase Auth
+    supabase_url: str = ""
+
     model_config = {
         "env_file": ".env",
         "case_sensitive": False,
@@ -59,6 +86,18 @@ class Settings(BaseSettings):
                 "Generate a secure key with: openssl rand -base64 32"
             )
 
+        return v
+
+    @field_validator("redis_url")
+    @classmethod
+    def validate_redis_url(cls, v: str) -> str:
+        """Ensure Redis URL contains a password in production."""
+        env = os.environ.get("ENVIRONMENT", "development")
+        if env == "production" and "redis://:@" in v:
+            raise ValueError(
+                "REDIS_URL must include a password in production. "
+                "Set REDIS_PASSWORD in your environment."
+            )
         return v
 
     admin_password_hash: str = ""

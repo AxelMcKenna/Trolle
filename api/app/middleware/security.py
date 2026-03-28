@@ -49,7 +49,7 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
                 "style-src 'self' 'unsafe-inline'",
                 "img-src 'self' data: https:",
                 "font-src 'self' data:",
-                "connect-src 'self' https://api.mapbox.com https://*.tiles.mapbox.com ws://localhost:* http://localhost:*",
+                "connect-src 'self' https://api.mapbox.com https://*.tiles.mapbox.com https://*.supabase.co ws://localhost:* http://localhost:*",
                 "frame-ancestors 'none'",
             ]
         else:
@@ -60,7 +60,7 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
                 "style-src 'self'",  # No unsafe-inline
                 "img-src 'self' data: https:",
                 "font-src 'self' data:",
-                "connect-src 'self' https://api.mapbox.com https://*.tiles.mapbox.com",
+                "connect-src 'self' https://api.mapbox.com https://*.tiles.mapbox.com https://*.supabase.co",
                 "frame-ancestors 'none'",
                 "base-uri 'self'",  # Prevent base tag injection
                 "form-action 'self'",  # Only submit forms to same origin
