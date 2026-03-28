@@ -17,12 +17,24 @@ from app.middleware import (
     _rate_limit_exceeded_handler,
     get_limiter,
 )
-from app.routes import auth, health, ingest, products, stores, trolley, worker
+from app.routes import auth, health, ingest, products, recipes, saved_trolleys, stores, trolley, users, worker
 
 configure_logging()
 logger = logging.getLogger(__name__)
 
 settings = get_settings()
+
+# Sentry error tracking (no-op if DSN not configured)
+if settings.sentry_dsn:
+    import sentry_sdk
+
+    sentry_sdk.init(
+        dsn=settings.sentry_dsn,
+        environment=settings.environment,
+        traces_sample_rate=0.1,
+        send_default_pii=False,
+    )
+    logger.info("Sentry initialized")
 
 app = FastAPI(title=settings.app_name)
 
@@ -38,6 +50,9 @@ app.include_router(stores.router)
 app.include_router(ingest.router)
 app.include_router(worker.router)
 app.include_router(trolley.router)
+app.include_router(recipes.router)
+app.include_router(users.router)
+app.include_router(saved_trolleys.router)
 
 # Security headers middleware
 app.add_middleware(SecurityHeadersMiddleware)

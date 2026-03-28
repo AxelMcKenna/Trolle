@@ -16,6 +16,7 @@ class TrolleyCompareRequest(BaseModel):
     lat: float
     lon: float
     radius_km: float = Field(ge=1, le=10)
+    loyalty_cards: Optional[dict[str, bool]] = None
 
     @validator("lat")
     @classmethod
@@ -41,6 +42,7 @@ class TrolleyStoreItem(BaseModel):
     matched_product_name: Optional[str]
     price: Optional[float]
     line_total: Optional[float]
+    is_member_only: bool = False
 
 
 class TrolleyStoreBreakdown(BaseModel):
