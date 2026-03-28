@@ -18,7 +18,6 @@ from sqlalchemy import select
 from app.db.models import IngestionRun, Store
 from app.db.session import async_transaction, get_async_session
 from app.scrapers.base import Scraper
-from app.scrapers.api_auth_base import APIAuthBase
 from app.services.normalizer import (
     clean_product_name,
     extract_size_from_text,
@@ -35,7 +34,7 @@ PERSIST_BATCH_SIZE = 200    # products per DB upsert batch
 INTER_STORE_DELAY = 0.5     # seconds between stores
 
 
-class FoodstuffsAPIScraper(Scraper, APIAuthBase):
+class FoodstuffsAPIScraper(Scraper):
     """
     Base scraper for Foodstuffs chains (New World, PakNSave).
 
@@ -221,7 +220,8 @@ class FoodstuffsAPIScraper(Scraper, APIAuthBase):
 
     def __init__(self, scrape_all_stores: bool = True):
         Scraper.__init__(self)
-        APIAuthBase.__init__(self)
+        self.auth_token: Optional[str] = None
+        self.cookies: dict = {}
         self.store_id: str = self.default_store_id
         self.scrape_all_stores = scrape_all_stores
         self.store_list = self._load_store_list() if scrape_all_stores else []
@@ -271,26 +271,8 @@ class FoodstuffsAPIScraper(Scraper, APIAuthBase):
             return []
 
     async def _get_auth_token(self) -> Optional[str]:
-        """Get authentication token.
-
-        Strategy (in order):
-        1. Direct HTTP call to /api/user/get-current-user (fast, no browser).
-        2. Browser-based capture (fallback for if the direct endpoint changes).
-        """
-        # --- Fast path: direct HTTP token request ---
-        token = await self._get_token_direct()
-        if token:
-            return token
-
-        logger.warning(f"{self.chain}: direct token request failed, falling back to browser auth")
-
-        # --- Slow path: browser-based capture ---
-        return await self._get_auth_via_browser(
-            capture_token=True,
-            capture_cookies=True,
-            headless=True,
-            wait_time=10.0
-        )
+        """Get authentication token via direct HTTP call."""
+        return await self._get_token_direct()
 
     async def _get_token_direct(self) -> Optional[str]:
         """Request a guest auth token directly via the site's Next.js API route."""
@@ -687,7 +669,7 @@ class FoodstuffsAPIScraper(Scraper, APIAuthBase):
             if not self.auth_token:
                 logger.error(
                     f"Unable to authenticate {self.chain}: "
-                    "both direct HTTP and browser token capture failed"
+                    "direct HTTP token request failed"
                 )
                 return False
             self._token_obtained_at = time.monotonic()
