@@ -146,7 +146,7 @@ async def worker_health():
             # Determine status
             status = last_run.status
 
-            if status == "completed":
+            if status in ("completed", "completed_with_errors"):
                 scrapers_healthy += 1
                 if oldest_success_hours is None or hours_since > oldest_success_hours:
                     oldest_success_hours = hours_since

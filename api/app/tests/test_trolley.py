@@ -8,7 +8,8 @@ import pytest
 from pydantic import ValidationError
 
 from app.schemas.trolley import TrolleyCompareRequest, TrolleyItem
-from app.services.matching import normalize_size
+from app.services.matching import _clean_search_name, normalize_size
+from app.services.trolley import _effective_price
 
 
 class TestNormalizeSize:
@@ -49,6 +50,60 @@ class TestNormalizeSize:
 
     def test_no_match(self):
         assert normalize_size("Large") == "large"
+
+    def test_multipack_format(self):
+        """Multipack sizes: regex captures the first number+unit pair."""
+        assert normalize_size("6 x 330ml") == "330ml"
+
+    def test_decimal_trailing_zero(self):
+        """Trailing zeros should be stripped: '1.50 kg' -> '1.5kg'."""
+        assert normalize_size("1.50 Kilograms") == "1.5kg"
+
+    def test_integer_no_decimal(self):
+        """Whole numbers should not have .0: '2.0 litres' -> '2l'."""
+        assert normalize_size("2.0 Litres") == "2l"
+
+
+class TestCleanSearchName:
+    """Tests for _clean_search_name (brand + embedded size removal)."""
+
+    def test_brand_at_start(self):
+        assert _clean_search_name("Woolworths Spaghetti Pasta", "Woolworths") == "spaghetti pasta"
+
+    def test_brand_in_middle(self):
+        assert _clean_search_name("Fresh Woolworths Milk", "Woolworths") == "fresh milk"
+
+    def test_brand_repeated(self):
+        result = _clean_search_name("Woolworths Spaghetti Woolworths Pasta", "Woolworths")
+        assert result == "spaghetti pasta"
+
+    def test_brand_case_insensitive(self):
+        result = _clean_search_name("COUNTDOWN Free Range Eggs", "Countdown")
+        assert result == "free range eggs"
+
+    def test_no_brand(self):
+        assert _clean_search_name("Spaghetti Pasta", None) == "spaghetti pasta"
+
+    def test_empty_brand(self):
+        assert _clean_search_name("Spaghetti Pasta", "") == "spaghetti pasta"
+
+    def test_embedded_size_removed(self):
+        assert _clean_search_name("Spaghetti 500g", None) == "spaghetti"
+
+    def test_embedded_size_litres(self):
+        assert _clean_search_name("Milk 2l Homogenised", None) == "milk homogenised"
+
+    def test_multipack_size_removed(self):
+        assert _clean_search_name("Beer 6 x 330ml Lager", None) == "beer lager"
+
+    def test_brand_and_size_both_removed(self):
+        result = _clean_search_name("Woolworths Pasta 500g Spaghetti", "Woolworths")
+        assert result == "pasta spaghetti"
+
+    def test_only_brand_and_size(self):
+        """Edge case: name is just brand + size."""
+        result = _clean_search_name("Woolworths 500g", "Woolworths")
+        assert result == ""
 
 
 class TestTrolleySchemas:
@@ -188,3 +243,85 @@ class TestTrolleyEndpoint:
         assert "items" in data
         assert "summary" in data
         assert data["summary"]["total_items"] == 1
+
+
+class TestEffectivePriceLoyalty:
+    """Tests for _effective_price with loyalty card awareness."""
+
+    def test_member_promo_with_card(self):
+        """Member-only promo with loyalty card → returns promo price."""
+        result = _effective_price(
+            price_nzd=10.0,
+            promo_price_nzd=7.0,
+            promo_ends_at=None,
+            is_member_only=True,
+            has_loyalty_card=True,
+        )
+        assert result == 7.0
+
+    def test_member_promo_without_card(self):
+        """Member-only promo without loyalty card → returns regular price."""
+        result = _effective_price(
+            price_nzd=10.0,
+            promo_price_nzd=7.0,
+            promo_ends_at=None,
+            is_member_only=True,
+            has_loyalty_card=False,
+        )
+        assert result == 10.0
+
+    def test_regular_promo_without_card(self):
+        """Non-member promo without loyalty card → still returns promo price."""
+        result = _effective_price(
+            price_nzd=10.0,
+            promo_price_nzd=8.0,
+            promo_ends_at=None,
+            is_member_only=False,
+            has_loyalty_card=False,
+        )
+        assert result == 8.0
+
+    def test_no_promo(self):
+        """No promo → returns regular price regardless of card."""
+        result = _effective_price(
+            price_nzd=10.0,
+            promo_price_nzd=None,
+            promo_ends_at=None,
+            is_member_only=False,
+            has_loyalty_card=True,
+        )
+        assert result == 10.0
+
+    def test_default_has_card(self):
+        """Default has_loyalty_card=True → member promo applies."""
+        result = _effective_price(
+            price_nzd=10.0,
+            promo_price_nzd=6.0,
+            promo_ends_at=None,
+            is_member_only=True,
+        )
+        assert result == 6.0
+
+
+class TestTrolleySchemaLoyaltyCards:
+    """Tests for loyalty_cards in TrolleyCompareRequest."""
+
+    def test_request_with_loyalty_cards(self):
+        req = TrolleyCompareRequest(
+            items=[TrolleyItem(product_id=uuid.uuid4(), quantity=1)],
+            lat=-36.8485,
+            lon=174.7633,
+            radius_km=5,
+            loyalty_cards={"countdown": False, "paknsave": True},
+        )
+        assert req.loyalty_cards["countdown"] is False
+        assert req.loyalty_cards["paknsave"] is True
+
+    def test_request_without_loyalty_cards(self):
+        req = TrolleyCompareRequest(
+            items=[TrolleyItem(product_id=uuid.uuid4(), quantity=1)],
+            lat=-36.8485,
+            lon=174.7633,
+            radius_km=5,
+        )
+        assert req.loyalty_cards is None
