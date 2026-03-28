@@ -15,7 +15,7 @@ import {
   Check,
   Loader2,
   ArrowRightLeft,
-  UtensilsCrossed,
+  Save,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useTrolleyContext } from '@/contexts/TrolleyContext';
@@ -28,6 +28,7 @@ import { useProducts } from '@/hooks/useProducts';
 import { useSavedTrolleys } from '@/hooks/useSavedTrolleys';
 import { Product, TrolleyStoreBreakdown, SuggestionProduct } from '@/types';
 import { ChainLogo } from '@/components/stores/logos/ChainLogo';
+import { Header } from '@/components/layout/Header';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -79,24 +80,24 @@ export const Trolley = () => {
     }
   };
 
-  // Debounced search
+  // Debounced search — works without location (uses general search)
   useEffect(() => {
-    if (!searchQuery.trim() || !location) {
+    if (!searchQuery.trim()) {
       return;
     }
     clearTimeout(searchTimerRef.current);
     searchTimerRef.current = window.setTimeout(() => {
       fetchProducts({
         query: searchQuery.trim(),
-        lat: location.lat,
-        lon: location.lon,
-        radius_km: radiusKm,
+        ...(location && isLocationSet
+          ? { lat: location.lat, lon: location.lon, radius_km: radiusKm }
+          : {}),
         unique_products: true,
         limit: 8,
       });
     }, 300);
     return () => clearTimeout(searchTimerRef.current);
-  }, [searchQuery, location, radiusKm, fetchProducts]);
+  }, [searchQuery, location, radiusKm, isLocationSet, fetchProducts]);
 
   // Close search dropdown on outside click
   useEffect(() => {
@@ -153,23 +154,30 @@ export const Trolley = () => {
 
   return (
     <div className="min-h-screen bg-secondary">
-      {/* Header bar */}
-      <div className="bg-primary text-white px-4 py-3">
-        <div className="max-w-6xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <Link to="/" className="text-lg font-semibold">TROLL-E</Link>
-            <span className="text-white/60">/</span>
-            <h1 className="text-sm font-medium">Your Trolley</h1>
+      {/* Shared header — consistent navigation */}
+      <Header showSearch={false} />
+
+      {/* Main content */}
+      <div className="max-w-6xl mx-auto px-4 py-6">
+        {/* Page title + actions */}
+        <div className="flex items-center justify-between mb-6">
+          <div>
+            <h1 className="text-xl font-semibold">Your Trolley</h1>
+            {itemCount > 0 && (
+              <p className="text-sm text-muted-foreground mt-0.5">
+                {itemCount} item{itemCount !== 1 ? 's' : ''}
+              </p>
+            )}
           </div>
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-2">
             {isAuthenticated && itemCount > 0 && (
               <Button
-                variant="ghost"
+                variant="outline"
                 size="sm"
-                className="text-white/70 hover:bg-white/10 hover:text-white"
                 onClick={() => setShowSaveDialog(true)}
                 disabled={savingTrolley}
               >
+                <Save className="h-3.5 w-3.5 mr-1.5" />
                 {savingTrolley ? 'Saving...' : 'Save'}
               </Button>
             )}
@@ -177,35 +185,17 @@ export const Trolley = () => {
               <Button
                 variant="ghost"
                 size="sm"
-                className="text-white/70 hover:bg-white/10 hover:text-white"
+                className="text-muted-foreground hover:text-destructive"
                 onClick={() => setShowClearDialog(true)}
               >
+                <Trash2 className="h-3.5 w-3.5 mr-1.5" />
                 Clear
               </Button>
             )}
-            <Link to="/explore">
-              <Button variant="ghost" size="sm" className="text-white hover:bg-white/10">
-                <Search className="h-4 w-4" />
-                <span className="hidden sm:inline ml-1">Explore</span>
-              </Button>
-            </Link>
-            <Link to="/recipes">
-              <Button variant="ghost" size="sm" className="text-white hover:bg-white/10">
-                <UtensilsCrossed className="h-4 w-4" />
-                <span className="hidden sm:inline ml-1">Recipes</span>
-              </Button>
-            </Link>
-            <Button variant="ghost" size="sm" onClick={openLocationModal} className="text-white hover:bg-white/10">
-              <MapPin className="h-4 w-4" />
-              <span className="hidden sm:inline ml-1">{isLocationSet ? `${radiusKm} km` : 'Location'}</span>
-            </Button>
           </div>
         </div>
-      </div>
 
-      {/* Main content */}
-      <div className="max-w-6xl mx-auto px-4 py-6">
-        {/* Search bar */}
+        {/* Search bar — always visible, works without location */}
         <div ref={searchRef} className="relative mb-6">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" aria-hidden="true" />
           <Input
@@ -248,6 +238,7 @@ export const Trolley = () => {
                     inTrolley={isInTrolley(product.id)}
                     onAdd={() => {
                       addItem(product);
+                      toast.success('Added to trolley', { duration: 2000 });
                       setSearchQuery('');
                       setIsSearchOpen(false);
                     }}
@@ -261,6 +252,7 @@ export const Trolley = () => {
             </div>
           )}
         </div>
+
         {/* Empty state */}
         {itemCount === 0 && (
           <div className="space-y-8">
@@ -276,311 +268,368 @@ export const Trolley = () => {
               </Card>
             </div>
 
-            {isLocationSet && (
-              <>
-                <PresetPicker />
-                <div className="mt-4 text-center">
-                  <Link to="/recipes" className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-primary transition-colors">
-                    <UtensilsCrossed className="h-4 w-4" />
-                    Or start from a recipe
-                  </Link>
-                </div>
-              </>
-            )}
-          </div>
-        )}
-
-        {/* Location gate */}
-        {itemCount > 0 && !isLocationSet && (
-          <div className="flex items-center justify-center py-24">
-            <Card className="p-8 text-center max-w-md border bg-card">
-              <div className="inline-flex items-center justify-center w-12 h-12 rounded-lg bg-secondary mb-4">
-                <Navigation className="h-6 w-6 text-primary" />
-              </div>
-              <h2 className="text-xl font-semibold mb-2">Location Required</h2>
-              <p className="text-sm text-muted-foreground mb-6">
-                Enable location to compare trolley prices at stores near you.
-              </p>
-              {locationError && (
-                <div className="mb-4 p-3 bg-destructive/10 border border-destructive/20 rounded-lg">
-                  <p className="text-sm text-destructive">{locationError}</p>
-                </div>
-              )}
-              <div className="space-y-2">
-                <Button onClick={requestAutoLocation} disabled={locationLoading} className="w-full">
-                  {locationLoading ? 'Getting location...' : (
-                    <><Navigation className="h-4 w-4 mr-2" />Use My Location</>
-                  )}
-                </Button>
-                <Button onClick={openLocationModal} variant="outline" className="w-full">
-                  <MapPin className="h-4 w-4 mr-2" />Set Manually
-                </Button>
-              </div>
-            </Card>
-          </div>
-        )}
-
-        {/* Comparison results */}
-        {itemCount > 0 && isLocationSet && loading && (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <div className="space-y-3">
-              {[1, 2, 3].map((i) => (
-                <Skeleton key={i} className="h-24 w-full rounded-lg" />
-              ))}
+            {/* Presets — always shown, no location gate */}
+            <PresetPicker />
+            <div className="mt-4 text-center">
+              <Link to="/recipes" className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-primary transition-colors">
+                Or start from a recipe
+              </Link>
             </div>
-            <Skeleton className="h-80 w-full rounded-lg" />
           </div>
         )}
 
-        {itemCount > 0 && isLocationSet && error && (
-          <div className="bg-destructive/10 border border-destructive/20 rounded-lg p-4 mb-4">
-            <p className="text-sm text-destructive flex items-center gap-2">
-              <AlertCircle className="h-4 w-4" />
-              {error}
-            </p>
-          </div>
-        )}
+        {/* Items exist — show content regardless of location */}
+        {itemCount > 0 && (
+          <>
+            {/* Location banner — soft prompt, not a hard gate */}
+            {!isLocationSet && (
+              <div className="mb-6 p-4 bg-primary/5 border border-primary/15 rounded-lg">
+                <div className="flex items-start gap-4">
+                  <div className="flex-shrink-0 mt-0.5">
+                    <Navigation className="h-5 w-5 text-primary" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium">Enable location to compare prices</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      See which nearby store is cheapest for your entire trolley.
+                    </p>
+                    {locationError && (
+                      <p className="text-xs text-destructive mt-1">{locationError}</p>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    <Button size="sm" onClick={requestAutoLocation} disabled={locationLoading}>
+                      {locationLoading ? 'Locating...' : 'Use My Location'}
+                    </Button>
+                    <Button size="sm" variant="outline" onClick={openLocationModal}>
+                      Set Manually
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            )}
 
-        {itemCount > 0 && isLocationSet && !loading && comparison && (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* Left — Store rankings */}
-            <div>
-              <h2 className="text-sm font-semibold text-muted-foreground mb-3 uppercase tracking-wide">
-                Store Rankings
-              </h2>
-              {comparison.stores.length === 0 ? (
-                <Card className="p-6 text-center bg-card">
-                  <p className="text-sm text-muted-foreground">No nearby stores found</p>
-                </Card>
-              ) : (
-                <div className="space-y-2">
-                  {comparison.stores.map((store, idx) => (
-                    <StoreRankCard
-                      key={store.store_id}
-                      store={store}
-                      rank={idx + 1}
-                      isSelected={store.store_id === selectedStoreId}
-                      isBestPrice={idx === 0 && store.is_complete}
-                      onClick={() => setSelectedStoreId(store.store_id)}
-                    />
+            {/* Comparison loading */}
+            {isLocationSet && loading && (
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <div className="space-y-3">
+                  {[1, 2, 3].map((i) => (
+                    <Skeleton key={i} className="h-24 w-full rounded-lg" />
                   ))}
                 </div>
-              )}
-            </div>
+                <Skeleton className="h-80 w-full rounded-lg" />
+              </div>
+            )}
 
-            {/* Right — Item breakdown */}
-            <div>
-              <h2 className="text-sm font-semibold text-muted-foreground mb-3 uppercase tracking-wide">
-                Item Breakdown
-              </h2>
-              {selectedStore ? (
-                <Card className="bg-card overflow-hidden">
-                  <div className="p-4 border-b bg-secondary/50">
-                    <div className="flex items-center gap-2">
-                      <ChainLogo chain={selectedStore.chain} className="h-5 w-5" />
-                      <span className="font-medium text-sm">{selectedStore.store_name}</span>
-                    </div>
-                  </div>
-                  <div>
-                    {groupedItems && Object.entries(groupedItems).map(([dept, groupItems]) => (
-                        <div key={dept}>
-                          <div className="px-3 py-1.5 bg-secondary/70 border-y">
-                            <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-                              {dept}
-                            </span>
-                          </div>
-                          <div className="divide-y">
-                            {groupItems.map((storeItem, idx) => {
-                              const sourceItem = comparison.items.find(
-                                (i) => i.product_id === storeItem.source_product_id
-                              );
-                              const itemSuggestions = !storeItem.available
-                                ? suggestions?.items.find(
-                                    (s) => s.source_product_id === storeItem.source_product_id
-                                  )?.suggestions
-                                : undefined;
+            {/* Comparison error */}
+            {isLocationSet && error && (
+              <div className="bg-destructive/10 border border-destructive/20 rounded-lg p-4 mb-4">
+                <p className="text-sm text-destructive flex items-center gap-2">
+                  <AlertCircle className="h-4 w-4" />
+                  {error}
+                </p>
+              </div>
+            )}
 
-                              return (
-                                <Fragment key={idx}>
-                                  <div
-                                    className={`p-3 flex items-center gap-3 ${!storeItem.available ? 'opacity-50' : ''}`}
-                                  >
-                                    {sourceItem?.image_url ? (
-                                      <img
-                                        src={sourceItem.image_url}
-                                        alt={storeItem.source_product_name}
-                                        className="w-10 h-10 object-contain rounded flex-shrink-0"
-                                      />
-                                    ) : (
-                                      <div className="w-10 h-10 bg-muted rounded flex items-center justify-center flex-shrink-0">
-                                        <ShoppingCart className="h-4 w-4 text-muted-foreground/30" />
-                                      </div>
-                                    )}
-                                    <div className="flex-1 min-w-0">
-                                      <p className="text-sm font-medium truncate">
-                                        {storeItem.matched_product_name ?? storeItem.source_product_name}
-                                      </p>
-                                      <div className="flex items-center gap-2 mt-0.5">
-                                        <div className="flex items-center gap-1">
-                                          <button
-                                            className="h-7 w-7 rounded flex items-center justify-center hover:bg-muted text-muted-foreground touch-manipulation"
-                                            onClick={() => updateQuantity(storeItem.source_product_id, storeItem.quantity - 1)}
-                                            disabled={storeItem.quantity <= 1}
-                                            aria-label={`Decrease quantity of ${storeItem.matched_product_name ?? storeItem.source_product_name}`}
-                                          >
-                                            <Minus className="h-3 w-3" />
-                                          </button>
-                                          <span className="text-xs font-medium w-5 text-center" aria-label={`Quantity: ${storeItem.quantity}`}>{storeItem.quantity}</span>
-                                          <button
-                                            className="h-7 w-7 rounded flex items-center justify-center hover:bg-muted text-muted-foreground touch-manipulation"
-                                            onClick={() => updateQuantity(storeItem.source_product_id, storeItem.quantity + 1)}
-                                            disabled={storeItem.quantity >= 99}
-                                            aria-label={`Increase quantity of ${storeItem.matched_product_name ?? storeItem.source_product_name}`}
-                                          >
-                                            <Plus className="h-3 w-3" />
-                                          </button>
-                                        </div>
-                                        {!storeItem.available && (
-                                          <span className="text-xs text-muted-foreground">— Unavailable</span>
-                                        )}
-                                        {storeItem.is_member_only && storeItem.available && (
-                                          <Badge variant="secondary" className="text-[10px] px-1.5 py-0 gap-0.5">
-                                            <Award className="h-2.5 w-2.5" />
-                                            Member
-                                          </Badge>
-                                        )}
-                                        <button
-                                          className="h-7 w-7 rounded flex items-center justify-center hover:bg-destructive/10 text-muted-foreground hover:text-destructive ml-1 touch-manipulation"
-                                          onClick={() => removeItem(storeItem.source_product_id)}
-                                          aria-label={`Remove ${storeItem.matched_product_name ?? storeItem.source_product_name} from trolley`}
-                                        >
-                                          <Trash2 className="h-3 w-3" />
-                                        </button>
-                                      </div>
-                                    </div>
-                                    <div className="text-right flex-shrink-0">
-                                      {storeItem.available && storeItem.price != null ? (
-                                        <>
-                                          <p className="text-sm font-semibold">
-                                            ${storeItem.line_total?.toFixed(2)}
-                                          </p>
-                                          {storeItem.quantity > 1 && (
-                                            <p className="text-[10px] text-muted-foreground">
-                                              ${storeItem.price.toFixed(2)} ea
-                                            </p>
-                                          )}
-                                        </>
-                                      ) : (
-                                        <p className="text-xs text-muted-foreground">—</p>
-                                      )}
-                                    </div>
-                                  </div>
-                                  {/* Suggestions for unavailable items */}
-                                  {!storeItem.available && (suggestionsLoading || (itemSuggestions && itemSuggestions.length > 0)) && (
-                                    <div className="bg-amber-50/50 border-l-2 border-amber-300">
-                                      {suggestionsLoading ? (
-                                        <div className="px-4 py-2 flex items-center gap-2 text-xs text-muted-foreground">
-                                          <Loader2 className="h-3 w-3 animate-spin" />
-                                          Finding alternatives...
-                                        </div>
-                                      ) : (
-                                        <>
-                                          <div className="px-4 py-1.5 text-[10px] font-semibold text-amber-700 uppercase tracking-wide">
-                                            Suggestions
-                                          </div>
-                                          {itemSuggestions!.map((sug) => {
-                                            const sugPrice = sug.promo_price_nzd ?? sug.price_nzd;
-                                            return (
-                                              <div
-                                                key={sug.product_id}
-                                                className="px-4 py-2 flex items-center gap-3 hover:bg-amber-50/80 transition-colors"
-                                              >
-                                                {sug.image_url ? (
-                                                  <img src={sug.image_url} alt={sug.name} className="w-8 h-8 object-contain rounded flex-shrink-0" />
-                                                ) : (
-                                                  <div className="w-8 h-8 bg-muted rounded flex items-center justify-center flex-shrink-0">
-                                                    <ShoppingCart className="h-3 w-3 text-muted-foreground/30" />
-                                                  </div>
-                                                )}
-                                                <div className="flex-1 min-w-0">
-                                                  <p className="text-xs font-medium truncate">{sug.name}</p>
-                                                  {sug.size && (
-                                                    <p className="text-[10px] text-muted-foreground">{sug.size}</p>
-                                                  )}
-                                                </div>
-                                                <span className="text-xs font-semibold text-primary flex-shrink-0">
-                                                  ${sugPrice.toFixed(2)}
-                                                </span>
-                                                <Button
-                                                  variant="outline"
-                                                  size="sm"
-                                                  className="h-6 text-[10px] px-2 flex-shrink-0"
-                                                  onClick={() => {
-                                                    removeItem(storeItem.source_product_id);
-                                                    addItem({
-                                                      id: sug.product_id,
-                                                      name: sug.name,
-                                                      brand: sug.brand,
-                                                      size: sug.size,
-                                                      chain: selectedStore!.chain,
-                                                      image_url: sug.image_url,
-                                                      department: sourceItem?.department,
-                                                      price: {
-                                                        store_id: selectedStore!.store_id,
-                                                        store_name: selectedStore!.store_name,
-                                                        chain: selectedStore!.chain,
-                                                        price_nzd: sug.price_nzd,
-                                                        promo_price_nzd: sug.promo_price_nzd,
-                                                      },
-                                                      last_updated: new Date().toISOString(),
-                                                    } as Product);
-                                                  }}
-                                                >
-                                                  <ArrowRightLeft className="h-3 w-3 mr-1" />
-                                                  Swap
-                                                </Button>
-                                              </div>
-                                            );
-                                          })}
-                                        </>
-                                      )}
-                                    </div>
-                                  )}
-                                </Fragment>
-                              );
-                            })}
-                          </div>
-                        </div>
+            {/* Comparison results — full two-column layout */}
+            {isLocationSet && !loading && comparison && (
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {/* Left — Store rankings */}
+                <div>
+                  <h2 className="text-sm font-semibold text-muted-foreground mb-3 uppercase tracking-wide">
+                    Store Rankings
+                  </h2>
+                  {comparison.stores.length === 0 ? (
+                    <Card className="p-6 text-center bg-card">
+                      <p className="text-sm text-muted-foreground">No nearby stores found</p>
+                    </Card>
+                  ) : (
+                    <div className="space-y-2">
+                      {comparison.stores.map((store, idx) => (
+                        <StoreRankCard
+                          key={store.store_id}
+                          store={store}
+                          rank={idx + 1}
+                          isSelected={store.store_id === selectedStoreId}
+                          isBestPrice={idx === 0 && store.is_complete}
+                          onClick={() => setSelectedStoreId(store.store_id)}
+                        />
                       ))}
-                  </div>
-                  <div className="p-4 border-t bg-secondary/50">
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm text-muted-foreground">
-                        {selectedStore.items_available}/{selectedStore.items_total} items available
-                      </span>
-                      <span className="text-lg font-bold text-primary">
-                        ${selectedStore.estimated_total.toFixed(2)}
-                      </span>
                     </div>
-                    {(() => {
-                      const memberCount = selectedStore.items.filter((i) => i.is_member_only && i.available).length;
-                      if (memberCount === 0) return null;
-                      return (
-                        <p className="text-xs text-amber-700 mt-1 flex items-center gap-1">
-                          <Award className="h-3 w-3" />
-                          {memberCount} member-only price{memberCount > 1 ? 's' : ''} included
-                        </p>
-                      );
-                    })()}
-                  </div>
-                </Card>
-              ) : (
-                <Card className="p-6 text-center bg-card">
-                  <p className="text-sm text-muted-foreground">Select a store to see the breakdown</p>
-                </Card>
-              )}
-            </div>
-          </div>
+                  )}
+                </div>
+
+                {/* Right — Item breakdown */}
+                <div>
+                  <h2 className="text-sm font-semibold text-muted-foreground mb-3 uppercase tracking-wide">
+                    Item Breakdown
+                  </h2>
+                  {selectedStore ? (
+                    <Card className="bg-card overflow-hidden">
+                      <div className="p-4 border-b bg-secondary/50">
+                        <div className="flex items-center gap-2">
+                          <ChainLogo chain={selectedStore.chain} className="h-5 w-5" />
+                          <span className="font-medium text-sm">{selectedStore.store_name}</span>
+                        </div>
+                      </div>
+                      <div>
+                        {groupedItems && Object.entries(groupedItems).map(([dept, groupItems]) => (
+                            <div key={dept}>
+                              <div className="px-3 py-1.5 bg-secondary/70 border-y">
+                                <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                                  {dept}
+                                </span>
+                              </div>
+                              <div className="divide-y">
+                                {groupItems.map((storeItem, idx) => {
+                                  const sourceItem = comparison.items.find(
+                                    (i) => i.product_id === storeItem.source_product_id
+                                  );
+                                  const itemSuggestions = !storeItem.available
+                                    ? suggestions?.items.find(
+                                        (s) => s.source_product_id === storeItem.source_product_id
+                                      )?.suggestions
+                                    : undefined;
+
+                                  return (
+                                    <Fragment key={idx}>
+                                      <div
+                                        className={`p-3 flex items-center gap-3 ${!storeItem.available ? 'opacity-50' : ''}`}
+                                      >
+                                        {sourceItem?.image_url ? (
+                                          <img
+                                            src={sourceItem.image_url}
+                                            alt={storeItem.source_product_name}
+                                            className="w-10 h-10 object-contain rounded flex-shrink-0"
+                                          />
+                                        ) : (
+                                          <div className="w-10 h-10 bg-muted rounded flex items-center justify-center flex-shrink-0">
+                                            <ShoppingCart className="h-4 w-4 text-muted-foreground/30" />
+                                          </div>
+                                        )}
+                                        <div className="flex-1 min-w-0">
+                                          <p className="text-sm font-medium truncate">
+                                            {storeItem.matched_product_name ?? storeItem.source_product_name}
+                                          </p>
+                                          <div className="flex items-center gap-2 mt-0.5">
+                                            <div className="flex items-center gap-1">
+                                              <button
+                                                className="h-7 w-7 rounded flex items-center justify-center hover:bg-muted text-muted-foreground touch-manipulation"
+                                                onClick={() => updateQuantity(storeItem.source_product_id, storeItem.quantity - 1)}
+                                                disabled={storeItem.quantity <= 1}
+                                                aria-label={`Decrease quantity of ${storeItem.matched_product_name ?? storeItem.source_product_name}`}
+                                              >
+                                                <Minus className="h-3 w-3" />
+                                              </button>
+                                              <span className="text-xs font-medium w-5 text-center" aria-label={`Quantity: ${storeItem.quantity}`}>{storeItem.quantity}</span>
+                                              <button
+                                                className="h-7 w-7 rounded flex items-center justify-center hover:bg-muted text-muted-foreground touch-manipulation"
+                                                onClick={() => updateQuantity(storeItem.source_product_id, storeItem.quantity + 1)}
+                                                disabled={storeItem.quantity >= 99}
+                                                aria-label={`Increase quantity of ${storeItem.matched_product_name ?? storeItem.source_product_name}`}
+                                              >
+                                                <Plus className="h-3 w-3" />
+                                              </button>
+                                            </div>
+                                            {!storeItem.available && (
+                                              <span className="text-xs text-muted-foreground">— Unavailable</span>
+                                            )}
+                                            {storeItem.is_member_only && storeItem.available && (
+                                              <Badge variant="secondary" className="text-[10px] px-1.5 py-0 gap-0.5">
+                                                <Award className="h-2.5 w-2.5" />
+                                                Member
+                                              </Badge>
+                                            )}
+                                            <button
+                                              className="h-7 w-7 rounded flex items-center justify-center hover:bg-destructive/10 text-muted-foreground hover:text-destructive ml-1 touch-manipulation"
+                                              onClick={() => removeItem(storeItem.source_product_id)}
+                                              aria-label={`Remove ${storeItem.matched_product_name ?? storeItem.source_product_name} from trolley`}
+                                            >
+                                              <Trash2 className="h-3 w-3" />
+                                            </button>
+                                          </div>
+                                        </div>
+                                        <div className="text-right flex-shrink-0">
+                                          {storeItem.available && storeItem.price != null ? (
+                                            <>
+                                              <p className="text-sm font-semibold">
+                                                ${storeItem.line_total?.toFixed(2)}
+                                              </p>
+                                              {storeItem.quantity > 1 && (
+                                                <p className="text-[10px] text-muted-foreground">
+                                                  ${storeItem.price.toFixed(2)} ea
+                                                </p>
+                                              )}
+                                            </>
+                                          ) : (
+                                            <p className="text-xs text-muted-foreground">—</p>
+                                          )}
+                                        </div>
+                                      </div>
+                                      {/* Suggestions for unavailable items */}
+                                      {!storeItem.available && (suggestionsLoading || (itemSuggestions && itemSuggestions.length > 0)) && (
+                                        <div className="bg-amber-50/50 border-l-2 border-amber-300">
+                                          {suggestionsLoading ? (
+                                            <div className="px-4 py-2 flex items-center gap-2 text-xs text-muted-foreground">
+                                              <Loader2 className="h-3 w-3 animate-spin" />
+                                              Finding alternatives...
+                                            </div>
+                                          ) : (
+                                            <>
+                                              <div className="px-4 py-1.5 text-[10px] font-semibold text-amber-700 uppercase tracking-wide">
+                                                Suggestions
+                                              </div>
+                                              {itemSuggestions!.map((sug) => {
+                                                const sugPrice = sug.promo_price_nzd ?? sug.price_nzd;
+                                                return (
+                                                  <div
+                                                    key={sug.product_id}
+                                                    className="px-4 py-2 flex items-center gap-3 hover:bg-amber-50/80 transition-colors"
+                                                  >
+                                                    {sug.image_url ? (
+                                                      <img src={sug.image_url} alt={sug.name} className="w-8 h-8 object-contain rounded flex-shrink-0" />
+                                                    ) : (
+                                                      <div className="w-8 h-8 bg-muted rounded flex items-center justify-center flex-shrink-0">
+                                                        <ShoppingCart className="h-3 w-3 text-muted-foreground/30" />
+                                                      </div>
+                                                    )}
+                                                    <div className="flex-1 min-w-0">
+                                                      <p className="text-xs font-medium truncate">{sug.name}</p>
+                                                      {sug.size && (
+                                                        <p className="text-[10px] text-muted-foreground">{sug.size}</p>
+                                                      )}
+                                                    </div>
+                                                    <span className="text-xs font-semibold text-primary flex-shrink-0">
+                                                      ${sugPrice.toFixed(2)}
+                                                    </span>
+                                                    <Button
+                                                      variant="outline"
+                                                      size="sm"
+                                                      className="h-6 text-[10px] px-2 flex-shrink-0"
+                                                      onClick={() => {
+                                                        removeItem(storeItem.source_product_id);
+                                                        addItem({
+                                                          id: sug.product_id,
+                                                          name: sug.name,
+                                                          brand: sug.brand,
+                                                          size: sug.size,
+                                                          chain: selectedStore!.chain,
+                                                          image_url: sug.image_url,
+                                                          department: sourceItem?.department,
+                                                          price: {
+                                                            store_id: selectedStore!.store_id,
+                                                            store_name: selectedStore!.store_name,
+                                                            chain: selectedStore!.chain,
+                                                            price_nzd: sug.price_nzd,
+                                                            promo_price_nzd: sug.promo_price_nzd,
+                                                          },
+                                                          last_updated: new Date().toISOString(),
+                                                        } as Product);
+                                                      }}
+                                                    >
+                                                      <ArrowRightLeft className="h-3 w-3 mr-1" />
+                                                      Swap
+                                                    </Button>
+                                                  </div>
+                                                );
+                                              })}
+                                            </>
+                                          )}
+                                        </div>
+                                      )}
+                                    </Fragment>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          ))}
+                      </div>
+                      <div className="p-4 border-t bg-secondary/50">
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm text-muted-foreground">
+                            {selectedStore.items_available}/{selectedStore.items_total} items available
+                          </span>
+                          <span className="text-lg font-bold text-primary">
+                            ${selectedStore.estimated_total.toFixed(2)}
+                          </span>
+                        </div>
+                        {(() => {
+                          const memberCount = selectedStore.items.filter((i) => i.is_member_only && i.available).length;
+                          if (memberCount === 0) return null;
+                          return (
+                            <p className="text-xs text-amber-700 mt-1 flex items-center gap-1">
+                              <Award className="h-3 w-3" />
+                              {memberCount} member-only price{memberCount > 1 ? 's' : ''} included
+                            </p>
+                          );
+                        })()}
+                      </div>
+                    </Card>
+                  ) : (
+                    <Card className="p-6 text-center bg-card">
+                      <p className="text-sm text-muted-foreground">Select a store to see the breakdown</p>
+                    </Card>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* No location — show simple item list so users can still manage their trolley */}
+            {!isLocationSet && (
+              <Card className="bg-card overflow-hidden">
+                <div className="p-4 border-b bg-secondary/50">
+                  <h2 className="text-sm font-semibold">Items in your trolley</h2>
+                </div>
+                <div className="divide-y">
+                  {items.map((item) => (
+                    <div key={item.product_id} className="p-3 flex items-center gap-3">
+                      {item.image_url ? (
+                        <img
+                          src={item.image_url}
+                          alt={item.name}
+                          className="w-10 h-10 object-contain rounded flex-shrink-0"
+                        />
+                      ) : (
+                        <div className="w-10 h-10 bg-muted rounded flex items-center justify-center flex-shrink-0">
+                          <ShoppingCart className="h-4 w-4 text-muted-foreground/30" />
+                        </div>
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium truncate">{item.name}</p>
+                        {item.size && (
+                          <p className="text-xs text-muted-foreground">{item.size}</p>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <button
+                          className="h-7 w-7 rounded flex items-center justify-center hover:bg-muted text-muted-foreground touch-manipulation"
+                          onClick={() => updateQuantity(item.product_id, item.quantity - 1)}
+                          disabled={item.quantity <= 1}
+                        >
+                          <Minus className="h-3 w-3" />
+                        </button>
+                        <span className="text-xs font-medium w-5 text-center">{item.quantity}</span>
+                        <button
+                          className="h-7 w-7 rounded flex items-center justify-center hover:bg-muted text-muted-foreground touch-manipulation"
+                          onClick={() => updateQuantity(item.product_id, item.quantity + 1)}
+                          disabled={item.quantity >= 99}
+                        >
+                          <Plus className="h-3 w-3" />
+                        </button>
+                      </div>
+                      <button
+                        className="h-7 w-7 rounded flex items-center justify-center hover:bg-destructive/10 text-muted-foreground hover:text-destructive touch-manipulation"
+                        onClick={() => removeItem(item.product_id)}
+                        aria-label={`Remove ${item.name}`}
+                      >
+                        <Trash2 className="h-3 w-3" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </Card>
+            )}
+          </>
         )}
       </div>
 

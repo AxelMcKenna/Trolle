@@ -84,6 +84,8 @@ export const Explore = () => {
     newParams.set('page', newPage.toString());
     setSearchParams(newParams);
     goToPage(newPage);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+
   };
 
   const pageNumbers = useMemo(() => {
