@@ -1,5 +1,6 @@
 import { memo, useState } from "react";
-import { Store, Clock, ShoppingCart, MapPin, Eye, Check, Plus, Minus, Trash2 } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { Store, Clock, ShoppingCart, MapPin, Check, Plus, Minus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Product } from "@/types";
 import { Card, CardContent } from "@/components/ui/card";
@@ -7,7 +8,6 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { useTrolleyContext } from "@/contexts/TrolleyContext";
-import { QuickView } from "./QuickView";
 import { LoyaltyBadge } from "./LoyaltyBadge";
 import {
   formatPromoEndDate,
@@ -26,7 +26,7 @@ const ProductCardComponent = ({
   index,
 }: ProductCardProps) => {
   const [imageError, setImageError] = useState(false);
-  const [showQuickView, setShowQuickView] = useState(false);
+  const navigate = useNavigate();
   const { addItem, removeItem, updateQuantity, isInTrolley, getItemQuantity } = useTrolleyContext();
   const inTrolley = isInTrolley(product.id);
   const trolleyQty = getItemQuantity(product.id);
@@ -39,7 +39,7 @@ const ProductCardComponent = ({
   const distanceColorClass = getDistanceColorClass(product.price.distance_km);
 
   const handleCardClick = () => {
-    setShowQuickView(true);
+    navigate(`/product/${product.id}`);
   };
 
   return (
@@ -72,32 +72,8 @@ const ProductCardComponent = ({
             </Badge>
           )}
 
-          {/* Quick View button */}
-          <div className="absolute inset-0 hidden items-center justify-center bg-black/40 opacity-0 transition-opacity group-hover:opacity-100 sm:flex">
-            <Button
-              size="sm"
-              variant="secondary"
-              onClick={(e) => {
-                e.stopPropagation();
-                setShowQuickView(true);
-              }}
-            >
-              <Eye className="mr-1.5 h-4 w-4" />
-              Quick View
-            </Button>
-          </div>
-          <Button
-            size="sm"
-            variant="secondary"
-            className="absolute bottom-2 right-2 sm:hidden"
-            onClick={(e) => {
-              e.stopPropagation();
-              setShowQuickView(true);
-            }}
-          >
-            <Eye className="mr-1.5 h-4 w-4" />
-            Quick View
-          </Button>
+          {/* Hover overlay */}
+          <div className="absolute inset-0 bg-black/5 opacity-0 transition-opacity group-hover:opacity-100 sm:block hidden" />
         </div>
 
         <CardContent className="p-3 flex-1 flex flex-col">
@@ -219,11 +195,6 @@ const ProductCardComponent = ({
         </CardContent>
       </Card>
 
-      <QuickView
-        product={product}
-        isOpen={showQuickView}
-        onClose={() => setShowQuickView(false)}
-      />
     </div>
   );
 };

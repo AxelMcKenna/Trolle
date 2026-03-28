@@ -256,13 +256,23 @@ async def product_price_history(
 
 
 @router.get("/{product_id}", response_model=ProductDetailSchema)
-async def product_detail(product_id: UUID) -> ProductDetailSchema:
-    async with get_async_session() as session:
-        cache_key = f"product_detail:{product_id}"
+async def product_detail(
+    product_id: UUID,
+    lat: Optional[float] = Query(None),
+    lon: Optional[float] = Query(None),
+    radius_km: Optional[float] = Query(None, le=10),
+) -> ProductDetailSchema:
+    # Include location in cache key so different users see distance-aware results
+    loc_key = f"{round(lat, 2)}:{round(lon, 2)}:{radius_km}" if lat and lon and radius_km else "no_loc"
+    cache_key = f"product_detail:{product_id}:{loc_key}"
 
+    async with get_async_session() as session:
         async def producer() -> dict:
             try:
-                product = await fetch_product_detail(session, product_id)
+                product = await fetch_product_detail(
+                    session, product_id,
+                    lat=lat, lon=lon, radius_km=radius_km,
+                )
             except ValueError as exc:
                 raise HTTPException(status_code=404, detail=str(exc)) from exc
             return json.loads(product.json())

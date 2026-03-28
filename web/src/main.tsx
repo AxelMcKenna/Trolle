@@ -1,6 +1,6 @@
 import React, { lazy, Suspense } from "react";
 import ReactDOM from "react-dom/client";
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { BrowserRouter, Routes, Route } from "react-router-dom";
 import * as Sentry from "@sentry/react";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { AuthProvider } from "@/contexts/AuthContext";
@@ -38,6 +38,7 @@ const AuthCallback = lazy(() => import("@/pages/AuthCallback"));
 const Account = lazy(() => import("@/pages/Account"));
 const SharedTrolley = lazy(() => import("@/pages/SharedTrolley"));
 const SharedRecipe = lazy(() => import("@/pages/SharedRecipe"));
+const ProductDetail = lazy(() => import("@/pages/ProductDetail"));
 
 // Loading fallback component
 const PageLoader = () => (
@@ -73,7 +74,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
                 <Route path="/account" element={<ProtectedRoute><Account /></ProtectedRoute>} />
                 <Route path="/trolley/shared/:token" element={<SharedTrolley />} />
                 <Route path="/recipes/shared/:token" element={<SharedRecipe />} />
-                <Route path="/product/:id" element={<Navigate to="/explore" replace />} />
+                <Route path="/product/:id" element={<ProductDetail />} />
               </Routes>
             </Suspense>
             </TrolleyProvider>

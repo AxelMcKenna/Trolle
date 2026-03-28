@@ -47,6 +47,22 @@ export interface Product {
   last_updated: string;
 }
 
+export interface ProductDetail {
+  id: string;
+  name: string;
+  brand?: string | null;
+  category?: string | null;
+  chain: string;
+  size?: string | null;
+  department?: string | null;
+  subcategory?: string | null;
+  image_url?: string | null;
+  product_url?: string | null;
+  description?: string | null;
+  prices: Price[];
+  last_updated: string;
+}
+
 export interface ProductListResponse {
   items: Product[];
   total: number;
