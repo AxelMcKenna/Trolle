@@ -800,8 +800,24 @@ class FoodstuffsAPIScraper(Scraper):
                     p["store_name"] = store_name
                     store_products.append(p)
 
-            logger.info(f"  Store {store_name}: {len(store_products)} products")
-            yield store_id, store_products
+            # Deduplicate by source_id — overlapping categories (e.g. Pantry
+            # and Snacks) return the same product, causing batch upsert failures
+            # when duplicate source_product_ids appear in a single VALUES clause.
+            seen_ids: set = set()
+            deduped: List[dict] = []
+            for p in store_products:
+                sid = p.get("source_id")
+                if sid and sid in seen_ids:
+                    continue
+                if sid:
+                    seen_ids.add(sid)
+                deduped.append(p)
+
+            if len(deduped) < len(store_products):
+                logger.info(f"  Store {store_name}: {len(store_products)} products ({len(store_products) - len(deduped)} duplicates removed)")
+            else:
+                logger.info(f"  Store {store_name}: {len(store_products)} products")
+            yield store_id, deduped
 
             if store_idx < len(stores_to_scrape):
                 await asyncio.sleep(INTER_STORE_DELAY)
