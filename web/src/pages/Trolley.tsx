@@ -24,6 +24,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useTrolleyCompare } from '@/hooks/useTrolleyCompare';
 import { useLoyaltyCards } from '@/hooks/useLoyaltyCards';
 import { useTrolleySuggestions } from '@/hooks/useTrolleySuggestions';
+import { useSplitCompare } from '@/hooks/useSplitCompare';
 import { useProducts } from '@/hooks/useProducts';
 import { useSavedTrolleys } from '@/hooks/useSavedTrolleys';
 import { Product, TrolleyStoreBreakdown, SuggestionProduct } from '@/types';
@@ -37,12 +38,15 @@ import { Input } from '@/components/ui/input';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { PromptDialog } from '@/components/ui/prompt-dialog';
 import { PresetPicker } from '@/components/trolley/PresetPicker';
+import { StoreRankSkeleton } from '@/components/trolley/StoreRankSkeleton';
+import { ItemBreakdownSkeleton } from '@/components/trolley/ItemBreakdownSkeleton';
 import { getChainName } from '@/lib/chainConstants';
 
 export const Trolley = () => {
   const { items, itemCount, addItem, removeItem, updateQuantity, clearTrolley, isInTrolley } = useTrolleyContext();
   const { location, radiusKm, isLocationSet, openLocationModal, requestAutoLocation, loading: locationLoading, error: locationError } = useLocationContext();
   const { comparison, loading, error, compare } = useTrolleyCompare();
+  const { data: splitData, loading: splitLoading, compare: splitCompare } = useSplitCompare();
   const { suggestions, loading: suggestionsLoading, fetchSuggestions } = useTrolleySuggestions();
   const { products: searchResults, loading: searchLoading, fetchProducts } = useProducts();
   const [selectedStoreId, setSelectedStoreId] = useState<string | null>(null);
@@ -56,6 +60,7 @@ export const Trolley = () => {
   const [savingTrolley, setSavingTrolley] = useState(false);
   const [showSaveDialog, setShowSaveDialog] = useState(false);
   const [showClearDialog, setShowClearDialog] = useState(false);
+  const [shoppingMode, setShoppingMode] = useState<1 | 2 | 3>(1);
 
   const handleSaveTrolley = async (name: string) => {
     setSavingTrolley(true);
@@ -116,6 +121,20 @@ export const Trolley = () => {
       compare(items, location.lat, location.lon, radiusKm, loyaltyCards);
     }
   }, [items, location, radiusKm, isLocationSet, compare, loyaltyCards]);
+
+  // Trigger split comparison when mode > 1
+  useEffect(() => {
+    if (shoppingMode > 1 && items.length > 0 && location && isLocationSet) {
+      splitCompare(
+        items.map((i) => ({ product_id: i.product_id, quantity: i.quantity })),
+        location.lat,
+        location.lon,
+        radiusKm,
+        shoppingMode,
+        loyaltyCards,
+      );
+    }
+  }, [shoppingMode, items, location, radiusKm, isLocationSet, splitCompare, loyaltyCards]);
 
   // Auto-select cheapest complete store
   useEffect(() => {
@@ -226,9 +245,18 @@ export const Trolley = () => {
           {isSearchOpen && searchQuery.trim() && (
             <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-white border rounded-lg shadow-lg max-h-80 overflow-y-auto">
               {searchLoading ? (
-                <div className="p-4 flex items-center justify-center gap-2 text-sm text-muted-foreground">
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  Searching...
+                <div className="divide-y">
+                  {[1, 2, 3].map((i) => (
+                    <div key={i} className="flex items-center gap-3 px-3 py-2">
+                      <Skeleton className="w-9 h-9 rounded flex-shrink-0" />
+                      <div className="flex-1 min-w-0 space-y-1.5">
+                        <Skeleton className="h-4 w-3/4" />
+                        <Skeleton className="h-3 w-1/3" />
+                      </div>
+                      <Skeleton className="h-4 w-12 flex-shrink-0" />
+                      <Skeleton className="h-7 w-14 rounded flex-shrink-0" />
+                    </div>
+                  ))}
                 </div>
               ) : searchResults?.items.length ? (
                 searchResults.items.map((product) => (
@@ -236,12 +264,12 @@ export const Trolley = () => {
                     key={product.id}
                     product={product}
                     inTrolley={isInTrolley(product.id)}
+                    quantity={items.find((i) => i.product_id === product.id)?.quantity ?? 0}
                     onAdd={() => {
                       addItem(product);
-                      toast.success('Added to trolley', { duration: 2000 });
-                      setSearchQuery('');
-                      setIsSearchOpen(false);
                     }}
+                    onUpdateQuantity={(qty) => updateQuantity(product.id, qty)}
+                    onRemove={() => removeItem(product.id)}
                   />
                 ))
               ) : (
@@ -281,30 +309,28 @@ export const Trolley = () => {
         {/* Items exist — show content regardless of location */}
         {itemCount > 0 && (
           <>
-            {/* Location banner — soft prompt, not a hard gate */}
+            {/* Fix 2: Prominent comparison CTA when items exist but no location */}
             {!isLocationSet && (
-              <div className="mb-6 p-4 bg-primary/5 border border-primary/15 rounded-lg">
-                <div className="flex items-start gap-4">
-                  <div className="flex-shrink-0 mt-0.5">
-                    <Navigation className="h-5 w-5 text-primary" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium">Enable location to compare prices</p>
-                    <p className="text-xs text-muted-foreground mt-0.5">
-                      See which nearby store is cheapest for your entire trolley.
-                    </p>
-                    {locationError && (
-                      <p className="text-xs text-destructive mt-1">{locationError}</p>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-2 flex-shrink-0">
-                    <Button size="sm" onClick={requestAutoLocation} disabled={locationLoading}>
-                      {locationLoading ? 'Locating...' : 'Use My Location'}
-                    </Button>
-                    <Button size="sm" variant="outline" onClick={openLocationModal}>
-                      Set Manually
-                    </Button>
-                  </div>
+              <div className="mb-6 p-6 bg-gradient-to-br from-primary/5 to-primary/10 border border-primary/20 rounded-xl text-center">
+                <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-primary/10 mb-3">
+                  <ArrowRightLeft className="h-6 w-6 text-primary" />
+                </div>
+                <h3 className="text-base font-semibold mb-1">Compare prices at nearby stores</h3>
+                <p className="text-sm text-muted-foreground mb-4 max-w-md mx-auto">
+                  Enable location to find which store is cheapest for your {itemCount} item{itemCount !== 1 ? 's' : ''}.
+                </p>
+                {locationError && (
+                  <p className="text-xs text-destructive mb-3">{locationError}</p>
+                )}
+                <div className="flex items-center justify-center gap-3">
+                  <Button onClick={requestAutoLocation} disabled={locationLoading}>
+                    <Navigation className="h-4 w-4 mr-2" />
+                    {locationLoading ? 'Locating...' : 'Compare Prices'}
+                  </Button>
+                  <Button variant="outline" onClick={openLocationModal}>
+                    <MapPin className="h-4 w-4 mr-2" />
+                    Set Manually
+                  </Button>
                 </div>
               </div>
             )}
@@ -312,12 +338,18 @@ export const Trolley = () => {
             {/* Comparison loading */}
             {isLocationSet && loading && (
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <div className="space-y-3">
-                  {[1, 2, 3].map((i) => (
-                    <Skeleton key={i} className="h-24 w-full rounded-lg" />
-                  ))}
+                <div>
+                  <Skeleton className="h-4 w-32 mb-3" />
+                  <div className="space-y-2">
+                    {[1, 2, 3].map((i) => (
+                      <StoreRankSkeleton key={i} />
+                    ))}
+                  </div>
                 </div>
-                <Skeleton className="h-80 w-full rounded-lg" />
+                <div>
+                  <Skeleton className="h-4 w-32 mb-3" />
+                  <ItemBreakdownSkeleton />
+                </div>
               </div>
             )}
 
@@ -331,8 +363,87 @@ export const Trolley = () => {
               </div>
             )}
 
-            {/* Comparison results — full two-column layout */}
+            {/* Shopping mode selector */}
             {isLocationSet && !loading && comparison && (
+              <div className="mb-4">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-medium text-muted-foreground">Shopping mode:</span>
+                  {([1, 2, 3] as const).map((n) => (
+                    <button
+                      key={n}
+                      onClick={() => setShoppingMode(n)}
+                      className={`text-sm px-3 py-1.5 rounded-lg font-medium transition-colors ${
+                        shoppingMode === n
+                          ? 'bg-primary text-white'
+                          : 'bg-white border text-muted-foreground hover:bg-secondary'
+                      }`}
+                    >
+                      {n === 1 ? 'Best single store' : `Split across ${n} stores`}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Split savings banner */}
+                {shoppingMode > 1 && splitData && splitData.savings_vs_single > 0 && (
+                  <div className="mt-3 bg-green-50 border border-green-200 rounded-lg p-3 flex items-center justify-between">
+                    <div className="text-sm">
+                      <span className="text-green-700">
+                        <span className="font-semibold">Best single store:</span> ${splitData.single_best_total.toFixed(2)}
+                      </span>
+                      <span className="text-green-600 mx-2">&rarr;</span>
+                      <span className="text-green-700">
+                        <span className="font-semibold">Split across {shoppingMode}:</span> ${splitData.splits[splitData.splits.length - 1]?.grand_total.toFixed(2)}
+                      </span>
+                    </div>
+                    <Badge className="bg-green-600 text-white font-bold">
+                      Save ${splitData.savings_vs_single.toFixed(2)}
+                    </Badge>
+                  </div>
+                )}
+
+                {/* Split store assignments */}
+                {shoppingMode > 1 && splitLoading && (
+                  <div className="mt-3 flex items-center gap-2 text-sm text-muted-foreground">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Calculating optimal split...
+                  </div>
+                )}
+                {shoppingMode > 1 && !splitLoading && splitData?.splits?.length > 0 && (
+                  <div className="mt-3 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                    {splitData.splits[splitData.splits.length - 1].assignments.map((assignment) => (
+                      <Card key={assignment.store_id} className="p-4 bg-card">
+                        <div className="flex items-center gap-2 mb-3">
+                          <ChainLogo chain={assignment.chain} className="h-5 w-5" />
+                          <span className="font-medium text-sm">{assignment.store_name}</span>
+                          <span className="text-xs text-muted-foreground ml-auto">
+                            {assignment.distance_km} km
+                          </span>
+                        </div>
+                        <p className="text-lg font-bold text-primary mb-2">
+                          ${assignment.subtotal.toFixed(2)}
+                        </p>
+                        <div className="space-y-1">
+                          {assignment.items.map((item, idx) => (
+                            <div key={idx} className="flex items-center justify-between text-xs">
+                              <span className="truncate flex-1 text-muted-foreground">
+                                {item.matched_product_name || item.source_product_name}
+                                {item.quantity > 1 && ` x${item.quantity}`}
+                              </span>
+                              <span className="font-medium ml-2">
+                                ${item.line_total?.toFixed(2)}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </Card>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Comparison results — full two-column layout */}
+            {isLocationSet && !loading && comparison && shoppingMode === 1 && (
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 {/* Left — Store rankings */}
                 <div>
@@ -711,13 +822,16 @@ const StoreRankCard = ({ store, rank, isSelected, isBestPrice, onClick }: StoreR
 interface SearchResultRowProps {
   product: Product;
   inTrolley: boolean;
+  quantity: number;
   onAdd: () => void;
+  onUpdateQuantity: (qty: number) => void;
+  onRemove: () => void;
 }
 
-const SearchResultRow = ({ product, inTrolley, onAdd }: SearchResultRowProps) => {
+const SearchResultRow = ({ product, inTrolley, quantity, onAdd, onUpdateQuantity, onRemove }: SearchResultRowProps) => {
   const effectivePrice = product.price.promo_price_nzd ?? product.price.price_nzd;
   return (
-    <div className="flex items-center gap-3 px-3 py-2 hover:bg-secondary/50 cursor-pointer transition-colors">
+    <div className="flex items-center gap-3 px-3 py-2 hover:bg-secondary/50 transition-colors">
       {product.image_url ? (
         <img
           src={product.image_url}
@@ -739,22 +853,46 @@ const SearchResultRow = ({ product, inTrolley, onAdd }: SearchResultRowProps) =>
       <span className="text-sm font-semibold text-primary flex-shrink-0">
         ${effectivePrice.toFixed(2)}
       </span>
-      <Button
-        variant={inTrolley ? 'secondary' : 'default'}
-        size="sm"
-        className="flex-shrink-0 h-7 text-xs px-2"
-        onClick={(e) => {
-          e.stopPropagation();
-          if (!inTrolley) onAdd();
-        }}
-        disabled={inTrolley}
-      >
-        {inTrolley ? (
-          <><Check className="h-3 w-3 mr-1" />Added</>
-        ) : (
-          <><Plus className="h-3 w-3 mr-1" />Add</>
-        )}
-      </Button>
+      {/* Fix 6: Show quantity controls when already in trolley */}
+      {inTrolley ? (
+        <div className="flex items-center gap-0.5 flex-shrink-0">
+          <button
+            className="h-7 w-7 rounded flex items-center justify-center hover:bg-muted text-muted-foreground touch-manipulation"
+            onClick={(e) => {
+              e.stopPropagation();
+              if (quantity <= 1) onRemove();
+              else onUpdateQuantity(quantity - 1);
+            }}
+            aria-label="Decrease quantity"
+          >
+            {quantity <= 1 ? <Trash2 className="h-3 w-3" /> : <Minus className="h-3 w-3" />}
+          </button>
+          <span className="text-xs font-medium w-5 text-center">{quantity}</span>
+          <button
+            className="h-7 w-7 rounded flex items-center justify-center hover:bg-muted text-muted-foreground touch-manipulation"
+            onClick={(e) => {
+              e.stopPropagation();
+              onUpdateQuantity(quantity + 1);
+            }}
+            disabled={quantity >= 99}
+            aria-label="Increase quantity"
+          >
+            <Plus className="h-3 w-3" />
+          </button>
+        </div>
+      ) : (
+        <Button
+          variant="default"
+          size="sm"
+          className="flex-shrink-0 h-7 text-xs px-2"
+          onClick={(e) => {
+            e.stopPropagation();
+            onAdd();
+          }}
+        >
+          <Plus className="h-3 w-3 mr-1" />Add
+        </Button>
+      )}
     </div>
   );
 };

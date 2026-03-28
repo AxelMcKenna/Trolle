@@ -10,7 +10,6 @@ import {
   Users,
   Bookmark,
   ShoppingCart,
-  Search,
 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useRecipeDetail } from '@/hooks/useRecipeDetail';
@@ -19,12 +18,15 @@ import { useSavedRecipes } from '@/hooks/useSavedRecipes';
 import { useAuth } from '@/contexts/AuthContext';
 import { useLocationContext } from '@/contexts/LocationContext';
 import { useTrolleyContext } from '@/contexts/TrolleyContext';
+import { Header } from '@/components/layout/Header';
 import { RecipeStoreRankCard } from '@/components/recipes/RecipeStoreRankCard';
 import { IngredientBreakdown } from '@/components/recipes/IngredientBreakdown';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
+import { StoreRankSkeleton } from '@/components/trolley/StoreRankSkeleton';
+import { ItemBreakdownSkeleton } from '@/components/trolley/ItemBreakdownSkeleton';
 
 export const RecipeDetail = () => {
   const { id } = useParams<{ id: string }>();
@@ -78,13 +80,36 @@ export const RecipeDetail = () => {
   if (recipeLoading) {
     return (
       <div className="min-h-screen bg-secondary">
-        <div className="bg-primary text-white px-4 py-3">
-          <div className="max-w-6xl mx-auto">
-            <Skeleton className="h-6 w-48 bg-white/20" />
-          </div>
-        </div>
+        <Header showSearch={false} />
         <div className="max-w-6xl mx-auto px-4 py-6">
-          <Skeleton className="h-64 w-full rounded-lg" />
+          <Skeleton className="h-4 w-24 mb-3" />
+          <Card className="p-4 bg-card border shadow-sm mb-6">
+            <div className="flex items-start gap-4">
+              <Skeleton className="w-20 h-20 rounded-lg flex-shrink-0" />
+              <div className="flex-1 space-y-2">
+                <Skeleton className="h-6 w-2/3" />
+                <Skeleton className="h-4 w-full" />
+                <div className="flex items-center gap-2">
+                  <Skeleton className="h-5 w-16 rounded-full" />
+                  <Skeleton className="h-5 w-28 rounded-full" />
+                </div>
+              </div>
+            </div>
+          </Card>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div>
+              <Skeleton className="h-4 w-32 mb-3" />
+              <div className="space-y-2">
+                {[1, 2, 3].map((i) => (
+                  <StoreRankSkeleton key={i} />
+                ))}
+              </div>
+            </div>
+            <div>
+              <Skeleton className="h-4 w-40 mb-3" />
+              <ItemBreakdownSkeleton />
+            </div>
+          </div>
         </div>
       </div>
     );
@@ -93,11 +118,7 @@ export const RecipeDetail = () => {
   if (recipeError || !recipe) {
     return (
       <div className="min-h-screen bg-secondary">
-        <div className="bg-primary text-white px-4 py-3">
-          <div className="max-w-6xl mx-auto">
-            <Link to="/recipes" className="text-lg font-bold font-sans tracking-[0.15em]">TROLL-E</Link>
-          </div>
-        </div>
+        <Header showSearch={false} />
         <div className="max-w-6xl mx-auto px-4 py-24 text-center">
           <AlertCircle className="h-12 w-12 text-destructive mx-auto mb-4" />
           <h2 className="text-xl font-semibold mb-2">Recipe not found</h2>
@@ -111,40 +132,8 @@ export const RecipeDetail = () => {
 
   return (
     <div className="min-h-screen bg-secondary">
-      {/* Header bar */}
-      <div className="bg-primary text-white px-4 py-3">
-        <div className="max-w-6xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-3 min-w-0">
-            <Link to="/" className="text-lg font-bold font-sans tracking-[0.15em] flex-shrink-0">TROLL-E</Link>
-            <span className="text-white/60 flex-shrink-0">/</span>
-            <Link to="/recipes" className="text-sm text-white/80 hover:text-white flex-shrink-0">Recipes</Link>
-            <span className="text-white/60 flex-shrink-0">/</span>
-            <h1 className="text-sm font-medium truncate max-w-[200px]">{recipe.title}</h1>
-          </div>
-          <div className="flex items-center gap-1 flex-shrink-0">
-            <Link to="/explore">
-              <Button variant="ghost" size="sm" className="text-white hover:bg-white/10">
-                <Search className="h-4 w-4" />
-                <span className="hidden sm:inline ml-1">Explore</span>
-              </Button>
-            </Link>
-            <Link to="/trolley">
-              <Button variant="ghost" size="sm" className="text-white hover:bg-white/10 relative">
-                <ShoppingCart className="h-4 w-4" />
-                {itemCount > 0 && (
-                  <span className="absolute -top-1 -right-1 bg-white text-primary text-[10px] font-bold rounded-full h-4 min-w-[16px] flex items-center justify-center px-0.5">
-                    {itemCount}
-                  </span>
-                )}
-              </Button>
-            </Link>
-            <Button variant="ghost" size="sm" onClick={openLocationModal} className="text-white hover:bg-white/10">
-              <MapPin className="h-4 w-4" />
-              <span className="hidden sm:inline ml-1">{isLocationSet ? `${radiusKm} km` : 'Location'}</span>
-            </Button>
-          </div>
-        </div>
-      </div>
+      {/* Fix 4: Use shared Header for consistent navigation */}
+      <Header showSearch={false} />
 
       {/* Main content */}
       <div className="max-w-6xl mx-auto px-4 py-6">
@@ -204,45 +193,83 @@ export const RecipeDetail = () => {
             </div>
           </Card>
         </div>
-        {/* Location gate */}
+        {/* Fix 7: Show ingredients even without location, with location prompt inline */}
         {!isLocationSet && (
-          <div className="flex items-center justify-center py-24">
-            <Card className="p-8 text-center max-w-md border bg-card">
-              <div className="inline-flex items-center justify-center w-12 h-12 rounded-lg bg-secondary mb-4">
-                <Navigation className="h-6 w-6 text-primary" />
+          <>
+            {/* Ingredient list — visible without location */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <div>
+                <h2 className="text-sm font-semibold text-muted-foreground mb-3 uppercase tracking-wide">
+                  Ingredients ({recipe.ingredients.length})
+                </h2>
+                <Card className="bg-card overflow-hidden">
+                  <div className="divide-y">
+                    {recipe.ingredients.map((ing) => (
+                      <div key={ing.id} className="px-4 py-3 flex items-center gap-3">
+                        <div className="w-8 h-8 bg-secondary rounded flex items-center justify-center flex-shrink-0">
+                          <UtensilsCrossed className="h-4 w-4 text-muted-foreground/50" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium">{ing.display_name}</p>
+                          {ing.optional && (
+                            <span className="text-[10px] text-muted-foreground">Optional</span>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </Card>
               </div>
-              <h2 className="text-xl font-semibold mb-2">Location Required</h2>
-              <p className="text-sm text-muted-foreground mb-6">
-                Enable location to compare ingredient prices at stores near you.
-              </p>
-              {locationError && (
-                <div className="mb-4 p-3 bg-destructive/10 border border-destructive/20 rounded-lg">
-                  <p className="text-sm text-destructive">{locationError}</p>
-                </div>
-              )}
-              <div className="space-y-2">
-                <Button onClick={requestAutoLocation} disabled={locationLoading} className="w-full">
-                  {locationLoading ? 'Getting location...' : (
-                    <><Navigation className="h-4 w-4 mr-2" />Use My Location</>
+
+              {/* Location prompt — inline alongside ingredients */}
+              <div>
+                <h2 className="text-sm font-semibold text-muted-foreground mb-3 uppercase tracking-wide">
+                  Price Comparison
+                </h2>
+                <Card className="p-6 text-center bg-card border">
+                  <div className="inline-flex items-center justify-center w-12 h-12 rounded-lg bg-secondary mb-4">
+                    <Navigation className="h-6 w-6 text-primary" />
+                  </div>
+                  <h3 className="text-lg font-semibold mb-2">Enable location to compare prices</h3>
+                  <p className="text-sm text-muted-foreground mb-5">
+                    See which nearby store has the cheapest ingredients for this recipe.
+                  </p>
+                  {locationError && (
+                    <div className="mb-4 p-3 bg-destructive/10 border border-destructive/20 rounded-lg">
+                      <p className="text-sm text-destructive">{locationError}</p>
+                    </div>
                   )}
-                </Button>
-                <Button onClick={openLocationModal} variant="outline" className="w-full">
-                  <MapPin className="h-4 w-4 mr-2" />Set Manually
-                </Button>
+                  <div className="space-y-2">
+                    <Button onClick={requestAutoLocation} disabled={locationLoading} className="w-full">
+                      {locationLoading ? 'Getting location...' : (
+                        <><Navigation className="h-4 w-4 mr-2" />Use My Location</>
+                      )}
+                    </Button>
+                    <Button onClick={openLocationModal} variant="outline" className="w-full">
+                      <MapPin className="h-4 w-4 mr-2" />Set Manually
+                    </Button>
+                  </div>
+                </Card>
               </div>
-            </Card>
-          </div>
+            </div>
+          </>
         )}
 
         {/* Loading */}
         {isLocationSet && costLoading && (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <div className="space-y-3">
-              {[1, 2, 3].map((i) => (
-                <Skeleton key={i} className="h-24 w-full rounded-lg" />
-              ))}
+            <div>
+              <Skeleton className="h-4 w-32 mb-3" />
+              <div className="space-y-2">
+                {[1, 2, 3].map((i) => (
+                  <StoreRankSkeleton key={i} />
+                ))}
+              </div>
             </div>
-            <Skeleton className="h-80 w-full rounded-lg" />
+            <div>
+              <Skeleton className="h-4 w-40 mb-3" />
+              <ItemBreakdownSkeleton />
+            </div>
           </div>
         )}
 
