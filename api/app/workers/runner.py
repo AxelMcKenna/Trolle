@@ -4,9 +4,10 @@ import asyncio
 import logging
 import os
 import sys
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Dict, List, Optional
+from zoneinfo import ZoneInfo
 
 HEARTBEAT_FILE = Path("/tmp/worker-heartbeat")
 
@@ -20,10 +21,21 @@ logger = logging.getLogger(__name__)
 
 
 # Configuration
-SCRAPER_INTERVAL_HOURS = 24  # Run scrapers once per day
 SCRAPER_TIMEOUT_MINUTES = 240  # Max time per scraper (grocery catalogs are large)
 SEQUENTIAL_DELAY_SECONDS = 60  # Delay between scrapers to avoid overwhelming system
 SCRAPER_RETRY_DELAY_SECONDS = 300  # Wait 5 min before retrying a failed scraper
+SCHEDULE_HOUR = 2  # Run scrapers at 2:00 AM
+SCHEDULE_TZ = ZoneInfo("Pacific/Auckland")  # NZST/NZDT
+CHECK_INTERVAL_SECONDS = 60  # How often to check if it's time to run
+
+
+def _seconds_until_next_run() -> float:
+    """Return seconds until the next 2:00 AM NZST."""
+    now = datetime.now(SCHEDULE_TZ)
+    target = now.replace(hour=SCHEDULE_HOUR, minute=0, second=0, microsecond=0)
+    if now >= target:
+        target += timedelta(days=1)
+    return (target - now).total_seconds()
 
 
 class WorkerScheduler:
@@ -106,9 +118,9 @@ class WorkerScheduler:
         if last_run is None:
             return True  # Never run before
 
-        # Check if enough time has passed
+        # Check if enough time has passed (at least 20 hours to prevent double-runs)
         time_since_last_run = datetime.utcnow() - last_run
-        return time_since_last_run >= timedelta(hours=SCRAPER_INTERVAL_HOURS)
+        return time_since_last_run >= timedelta(hours=20)
 
     async def run_all_scrapers(self, force: bool = False, parallel: bool = False) -> None:
         """Run all scrapers, either sequentially or in parallel."""
@@ -175,10 +187,11 @@ async def _check_stale_chains(scheduler: WorkerScheduler) -> None:
 
 
 async def main(chains_to_run: Optional[List[str]] = None) -> None:
-    """Main worker loop."""
+    """Main worker loop — runs scrapers daily at 2:00 AM NZST."""
     # Parse flags from command line args
     parallel = "--parallel" in sys.argv or os.environ.get("TROLLE_PARALLEL", "true").lower() in ("1", "true")
-    args = [a for a in sys.argv[1:] if a != "--parallel"]
+    force_now = "--now" in sys.argv  # Allow one-off immediate run via --now flag
+    args = [a for a in sys.argv[1:] if a not in ("--parallel", "--now")]
 
     # Parse chains from command line args or env var if not provided
     if chains_to_run is None:
@@ -206,38 +219,46 @@ async def main(chains_to_run: Optional[List[str]] = None) -> None:
         chains_to_run = list(CHAINS.keys())
         logger.info(f"Running all chains: {', '.join(chains_to_run)}")
 
-    logger.info(f"Interval: {SCRAPER_INTERVAL_HOURS}h")
-    logger.info(f"Timeout: {SCRAPER_TIMEOUT_MINUTES}m")
+    logger.info(f"Schedule: daily at {SCHEDULE_HOUR}:00 {SCHEDULE_TZ}")
+    logger.info(f"Timeout: {SCRAPER_TIMEOUT_MINUTES}m per scraper")
     logger.info(f"Parallel: {parallel}")
     logger.info("=" * 60)
 
     scheduler = WorkerScheduler(chains_to_run=chains_to_run)
 
-    # Run all scrapers once at startup
-    logger.info("Running initial scraper pass...")
-    await scheduler.run_all_scrapers(force=True, parallel=parallel)
+    # If --now flag passed, run immediately (for manual triggers / first deploy)
+    if force_now:
+        logger.info("--now flag set, running immediate scraper pass...")
+        await scheduler.run_all_scrapers(force=True, parallel=parallel)
 
     HEARTBEAT_FILE.write_text(datetime.utcnow().isoformat())
 
-    # Then run on schedule
+    # Main loop — sleep until 2am NZST, then run scrapers
     while True:
-        logger.info("Worker sleeping for 1 hour...")
-        await asyncio.sleep(3600)  # Check every hour
+        wait_seconds = _seconds_until_next_run()
+        next_run = datetime.now(SCHEDULE_TZ) + timedelta(seconds=wait_seconds)
+        logger.info(f"Next scrape at {next_run.strftime('%Y-%m-%d %H:%M %Z')} ({wait_seconds / 3600:.1f}h from now)")
+
+        # Sleep in chunks so heartbeat stays fresh and we can run cleanup
+        while wait_seconds > 0:
+            sleep_chunk = min(wait_seconds, 3600)  # Wake every hour for housekeeping
+            await asyncio.sleep(sleep_chunk)
+            wait_seconds -= sleep_chunk
+            HEARTBEAT_FILE.write_text(datetime.utcnow().isoformat())
+
+            # Hourly housekeeping while waiting
+            try:
+                from app.workers.cleanup import run_promo_expiry_cleanup
+                await run_promo_expiry_cleanup()
+            except Exception as e:
+                logger.warning(f"Promo expiry cleanup failed: {e}")
+
+            await _check_stale_chains(scheduler)
+
+        # It's 2am — run all scrapers
+        logger.info(f"Schedule triggered at {datetime.now(SCHEDULE_TZ).strftime('%H:%M %Z')} — running scrapers")
+        await scheduler.run_all_scrapers(force=True, parallel=parallel)
         HEARTBEAT_FILE.write_text(datetime.utcnow().isoformat())
-
-        logger.info("Checking for scheduled scraper runs...")
-        await scheduler.run_all_scrapers(parallel=parallel)
-
-        # Periodic promo expiry cleanup (lightweight, runs every cycle)
-        try:
-            from app.workers.cleanup import run_promo_expiry_cleanup
-
-            await run_promo_expiry_cleanup()
-        except Exception as e:
-            logger.warning(f"Promo expiry cleanup failed: {e}")
-
-        # Check for stale chains (no successful run within threshold)
-        await _check_stale_chains(scheduler)
 
 
 if __name__ == "__main__":
