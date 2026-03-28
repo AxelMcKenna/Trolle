@@ -1,6 +1,4 @@
 import { useFilters } from '@/hooks/useFilters';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import { SlidersHorizontal } from 'lucide-react';
 
 interface FilterBarProps {
@@ -11,22 +9,17 @@ export const FilterBar = ({ onOpenFilters }: FilterBarProps) => {
   const { activeFilterCount } = useFilters();
 
   return (
-    <div className="bg-white border-b border-subtle lg:hidden">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-5">
-        <Button
-          variant="outline"
-          onClick={onOpenFilters}
-          className="flex items-center gap-2 border-subtle py-4 px-4"
-        >
-          <SlidersHorizontal className="h-4 w-4" />
-          Filters
-          {activeFilterCount > 0 && (
-            <Badge className="bg-primary text-white ml-1">
-              {activeFilterCount}
-            </Badge>
-          )}
-        </Button>
-      </div>
-    </div>
+    <button
+      onClick={onOpenFilters}
+      className="fixed bottom-6 right-4 z-50 lg:hidden flex items-center gap-2 bg-primary text-white pl-4 pr-4 py-3 rounded-full shadow-lg active:scale-95 transition-transform"
+    >
+      <SlidersHorizontal className="h-4 w-4" />
+      <span className="text-sm font-medium">Filters</span>
+      {activeFilterCount > 0 && (
+        <span className="flex items-center justify-center bg-white text-primary text-xs font-bold rounded-full h-5 min-w-[20px] px-1">
+          {activeFilterCount}
+        </span>
+      )}
+    </button>
   );
 };
