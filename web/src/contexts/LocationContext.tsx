@@ -28,7 +28,12 @@ const LocationContext = createContext<LocationContextType | undefined>(undefined
 
 const STORAGE_KEY = 'userLocationData';
 const DEFAULT_RADIUS_KM = 2;
-const CACHE_DURATION_MS = 5 * 60 * 1000; // 5 minutes
+const CACHE_AUTO_MS = 60 * 60 * 1000; // 1 hour for auto-detected
+const CACHE_MANUAL_MS = 24 * 60 * 60 * 1000; // 24 hours for manual
+
+function getCacheDuration(source: 'auto' | 'manual'): number {
+  return source === 'manual' ? CACHE_MANUAL_MS : CACHE_AUTO_MS;
+}
 
 export const LocationProvider = ({ children }: { children: ReactNode }) => {
   const [locationData, setLocationData] = useState<LocationData | null>(() => {
@@ -38,7 +43,7 @@ export const LocationProvider = ({ children }: { children: ReactNode }) => {
       try {
         const data: LocationData = JSON.parse(stored);
         // Check if cache is still valid
-        if (Date.now() - data.timestamp < CACHE_DURATION_MS) {
+        if (Date.now() - data.timestamp < getCacheDuration(data.source)) {
           console.log('[LocationContext] Loaded cached location:', data);
           return data;
         }

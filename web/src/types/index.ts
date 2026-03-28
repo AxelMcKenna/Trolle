@@ -98,6 +98,7 @@ export interface TrolleyStoreItem {
   matched_product_name?: string | null;
   price?: number | null;
   line_total?: number | null;
+  is_member_only?: boolean;
 }
 
 export interface TrolleyStoreBreakdown {
@@ -144,11 +145,85 @@ export interface TrolleySuggestionsResponse {
   items: SuggestionItem[];
 }
 
+// Recipe types
+export interface RecipeIngredient {
+  id: string;
+  description: string;
+  quantity?: number | null;
+  unit?: string | null;
+  display_name: string;
+  optional: boolean;
+}
+
+export interface Recipe {
+  id: string;
+  title: string;
+  description?: string | null;
+  servings: number;
+  image_url?: string | null;
+  source_url?: string | null;
+  is_public: boolean;
+  is_seeded: boolean;
+  created_by?: string | null;
+  ingredients: RecipeIngredient[];
+}
+
+export interface RecipeListItem {
+  id: string;
+  title: string;
+  description?: string | null;
+  servings: number;
+  image_url?: string | null;
+  ingredient_count: number;
+}
+
+export interface RecipeListResponse {
+  items: RecipeListItem[];
+  total: number;
+}
+
+export interface RecipeIngredientMatch {
+  ingredient_id: string;
+  ingredient_description: string;
+  display_name: string;
+  optional: boolean;
+  available: boolean;
+  matched_product_id?: string | null;
+  matched_product_name?: string | null;
+  matched_product_image?: string | null;
+  price?: number | null;
+  quantity?: number | null;
+  unit?: string | null;
+}
+
+export interface RecipeStoreBreakdown {
+  store_id: string;
+  store_name: string;
+  chain: string;
+  distance_km: number;
+  estimated_total: number;
+  items_available: number;
+  items_total: number;
+  is_complete: boolean;
+  ingredients: RecipeIngredientMatch[];
+}
+
+export interface RecipeCostResponse {
+  recipe: RecipeListItem;
+  stores: RecipeStoreBreakdown[];
+  summary: {
+    total_ingredients: number;
+    total_stores: number;
+    complete_stores: number;
+  };
+}
+
 export interface ProductFilters {
   query?: string;
   category?: string;
   chains?: ChainType[];
   promo_only?: boolean;
+  member_prices?: boolean;
   unique_products?: boolean;
   price_min?: number;
   price_max?: number;

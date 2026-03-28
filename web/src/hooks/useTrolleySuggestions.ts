@@ -1,8 +1,7 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import axios from 'axios';
 import { TrolleySuggestionsResponse } from '@/types';
-
-const API_BASE = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
+import { api } from '@/lib/api';
 
 interface SuggestionRequest {
   store_id: string;
@@ -28,8 +27,8 @@ export const useTrolleySuggestions = () => {
       setLoading(true);
 
       try {
-        const { data } = await axios.post<TrolleySuggestionsResponse>(
-          `${API_BASE}/trolley/suggestions`,
+        const { data } = await api.post<TrolleySuggestionsResponse>(
+          `/trolley/suggestions`,
           {
             store_id,
             items: product_ids.map((id) => ({ product_id: id, quantity: 1 })),

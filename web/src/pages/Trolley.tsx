@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, Fragment } from 'react';
+import { useState, useEffect, useRef, useMemo, Fragment } from 'react';
 import { Link } from 'react-router-dom';
 import {
   ShoppingCart,
@@ -15,12 +15,17 @@ import {
   Check,
   Loader2,
   ArrowRightLeft,
+  UtensilsCrossed,
 } from 'lucide-react';
+import { toast } from 'sonner';
 import { useTrolleyContext } from '@/contexts/TrolleyContext';
 import { useLocationContext } from '@/contexts/LocationContext';
+import { useAuth } from '@/contexts/AuthContext';
 import { useTrolleyCompare } from '@/hooks/useTrolleyCompare';
+import { useLoyaltyCards } from '@/hooks/useLoyaltyCards';
 import { useTrolleySuggestions } from '@/hooks/useTrolleySuggestions';
 import { useProducts } from '@/hooks/useProducts';
+import { useSavedTrolleys } from '@/hooks/useSavedTrolleys';
 import { Product, TrolleyStoreBreakdown, SuggestionProduct } from '@/types';
 import { ChainLogo } from '@/components/stores/logos/ChainLogo';
 import { Button } from '@/components/ui/button';
@@ -28,6 +33,9 @@ import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Input } from '@/components/ui/input';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import { PromptDialog } from '@/components/ui/prompt-dialog';
+import { PresetPicker } from '@/components/trolley/PresetPicker';
 import { getChainName } from '@/lib/chainConstants';
 
 export const Trolley = () => {
@@ -41,6 +49,35 @@ export const Trolley = () => {
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const searchRef = useRef<HTMLDivElement>(null);
   const searchTimerRef = useRef<number>();
+  const { isAuthenticated } = useAuth();
+  const { loyaltyCards } = useLoyaltyCards();
+  const { createTrolley } = useSavedTrolleys();
+  const [savingTrolley, setSavingTrolley] = useState(false);
+  const [showSaveDialog, setShowSaveDialog] = useState(false);
+  const [showClearDialog, setShowClearDialog] = useState(false);
+
+  const handleSaveTrolley = async (name: string) => {
+    setSavingTrolley(true);
+    const result = await createTrolley({
+      name,
+      items: items.map((i) => ({
+        product_id: i.product_id,
+        name: i.name,
+        brand: i.brand,
+        size: i.size,
+        chain: i.chain,
+        image_url: i.image_url,
+        quantity: i.quantity,
+      })),
+    });
+    setSavingTrolley(false);
+
+    if (result) {
+      toast.success(`Trolley "${name}" saved`);
+    } else {
+      toast.error('Failed to save trolley');
+    }
+  };
 
   // Debounced search
   useEffect(() => {
@@ -75,9 +112,9 @@ export const Trolley = () => {
   // Trigger comparison when items or location change
   useEffect(() => {
     if (items.length > 0 && location && isLocationSet) {
-      compare(items, location.lat, location.lon, radiusKm);
+      compare(items, location.lat, location.lon, radiusKm, loyaltyCards);
     }
-  }, [items, location, radiusKm, isLocationSet, compare]);
+  }, [items, location, radiusKm, isLocationSet, compare, loyaltyCards]);
 
   // Auto-select cheapest complete store
   useEffect(() => {
@@ -87,6 +124,21 @@ export const Trolley = () => {
   }, [comparison, selectedStoreId]);
 
   const selectedStore = comparison?.stores.find((s) => s.store_id === selectedStoreId) ?? null;
+
+  // Memoize grouped items by department to avoid recalculating on every render
+  const groupedItems = useMemo(() => {
+    if (!selectedStore || !comparison) return null;
+    const grouped: Record<string, typeof selectedStore.items> = {};
+    selectedStore.items.forEach((storeItem) => {
+      const sourceItem = comparison.items.find(
+        (i) => i.product_id === storeItem.source_product_id
+      );
+      const dept = sourceItem?.department || 'Other';
+      if (!grouped[dept]) grouped[dept] = [];
+      grouped[dept].push(storeItem);
+    });
+    return grouped;
+  }, [selectedStore, comparison]);
 
   // Fetch suggestions for unavailable items when store changes
   useEffect(() => {
@@ -109,92 +161,132 @@ export const Trolley = () => {
             <span className="text-white/60">/</span>
             <h1 className="text-sm font-medium">Your Trolley</h1>
           </div>
-          {itemCount > 0 && (
-            <Button
-              variant="ghost"
-              size="sm"
-              className="text-white/70 hover:bg-white/10 hover:text-white"
-              onClick={clearTrolley}
-            >
-              Clear All
-            </Button>
-          )}
-        </div>
-      </div>
-
-      {/* Search bar */}
-      <div className="bg-white border-b">
-        <div className="max-w-6xl mx-auto px-4 py-3">
-          <div ref={searchRef} className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Search products to add..."
-              value={searchQuery}
-              onChange={(e) => {
-                setSearchQuery(e.target.value);
-                setIsSearchOpen(true);
-              }}
-              onFocus={() => searchQuery.trim() && setIsSearchOpen(true)}
-              className="pl-10 pr-8 h-9 text-sm"
-            />
-            {searchQuery && (
-              <button
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                onClick={() => {
-                  setSearchQuery('');
-                  setIsSearchOpen(false);
-                }}
+          <div className="flex items-center gap-1">
+            {isAuthenticated && itemCount > 0 && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-white/70 hover:bg-white/10 hover:text-white"
+                onClick={() => setShowSaveDialog(true)}
+                disabled={savingTrolley}
               >
-                <X className="h-4 w-4" />
-              </button>
+                {savingTrolley ? 'Saving...' : 'Save'}
+              </Button>
             )}
-
-            {/* Search results dropdown */}
-            {isSearchOpen && searchQuery.trim() && (
-              <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-white border rounded-lg shadow-lg max-h-80 overflow-y-auto">
-                {searchLoading ? (
-                  <div className="p-4 flex items-center justify-center gap-2 text-sm text-muted-foreground">
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    Searching...
-                  </div>
-                ) : searchResults?.items.length ? (
-                  searchResults.items.map((product) => (
-                    <SearchResultRow
-                      key={product.id}
-                      product={product}
-                      inTrolley={isInTrolley(product.id)}
-                      onAdd={() => {
-                        addItem(product);
-                        setSearchQuery('');
-                        setIsSearchOpen(false);
-                      }}
-                    />
-                  ))
-                ) : (
-                  <div className="p-4 text-sm text-muted-foreground text-center">
-                    No products found
-                  </div>
-                )}
-              </div>
+            {itemCount > 0 && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-white/70 hover:bg-white/10 hover:text-white"
+                onClick={() => setShowClearDialog(true)}
+              >
+                Clear
+              </Button>
             )}
+            <Link to="/explore">
+              <Button variant="ghost" size="sm" className="text-white hover:bg-white/10">
+                <Search className="h-4 w-4" />
+                <span className="hidden sm:inline ml-1">Explore</span>
+              </Button>
+            </Link>
+            <Link to="/recipes">
+              <Button variant="ghost" size="sm" className="text-white hover:bg-white/10">
+                <UtensilsCrossed className="h-4 w-4" />
+                <span className="hidden sm:inline ml-1">Recipes</span>
+              </Button>
+            </Link>
+            <Button variant="ghost" size="sm" onClick={openLocationModal} className="text-white hover:bg-white/10">
+              <MapPin className="h-4 w-4" />
+              <span className="hidden sm:inline ml-1">{isLocationSet ? `${radiusKm} km` : 'Location'}</span>
+            </Button>
           </div>
         </div>
       </div>
 
       {/* Main content */}
       <div className="max-w-6xl mx-auto px-4 py-6">
+        {/* Search bar */}
+        <div ref={searchRef} className="relative mb-6">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" aria-hidden="true" />
+          <Input
+            placeholder="Search products to add..."
+            aria-label="Search products to add to trolley"
+            value={searchQuery}
+            onChange={(e) => {
+              setSearchQuery(e.target.value);
+              setIsSearchOpen(true);
+            }}
+            onFocus={() => searchQuery.trim() && setIsSearchOpen(true)}
+            className="pl-10 pr-8 h-9 text-sm bg-white border shadow-sm"
+          />
+          {searchQuery && (
+            <button
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+              onClick={() => {
+                setSearchQuery('');
+                setIsSearchOpen(false);
+              }}
+              aria-label="Clear search"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          )}
+
+          {/* Search results dropdown */}
+          {isSearchOpen && searchQuery.trim() && (
+            <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-white border rounded-lg shadow-lg max-h-80 overflow-y-auto">
+              {searchLoading ? (
+                <div className="p-4 flex items-center justify-center gap-2 text-sm text-muted-foreground">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Searching...
+                </div>
+              ) : searchResults?.items.length ? (
+                searchResults.items.map((product) => (
+                  <SearchResultRow
+                    key={product.id}
+                    product={product}
+                    inTrolley={isInTrolley(product.id)}
+                    onAdd={() => {
+                      addItem(product);
+                      setSearchQuery('');
+                      setIsSearchOpen(false);
+                    }}
+                  />
+                ))
+              ) : (
+                <div className="p-4 text-sm text-muted-foreground text-center">
+                  No products found
+                </div>
+              )}
+            </div>
+          )}
+        </div>
         {/* Empty state */}
         {itemCount === 0 && (
-          <div className="flex items-center justify-center py-24">
-            <Card className="p-8 text-center max-w-md border bg-card">
-              <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-secondary mb-4">
-                <ShoppingCart className="h-8 w-8 text-muted-foreground" />
-              </div>
-              <h2 className="text-xl font-semibold mb-2">Your trolley is empty</h2>
-              <p className="text-sm text-muted-foreground mb-2">
-                Search for products above or browse the Explore page to add items.
-              </p>
-            </Card>
+          <div className="space-y-8">
+            <div className="flex items-center justify-center pt-12 pb-4">
+              <Card className="p-8 text-center max-w-md border bg-card">
+                <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-secondary mb-4">
+                  <ShoppingCart className="h-8 w-8 text-muted-foreground" />
+                </div>
+                <h2 className="text-xl font-semibold mb-2">Your trolley is empty</h2>
+                <p className="text-sm text-muted-foreground mb-2">
+                  Search for products above, browse the Explore page, or start with a preset below.
+                </p>
+              </Card>
+            </div>
+
+            {isLocationSet && (
+              <>
+                <PresetPicker />
+                <div className="mt-4 text-center">
+                  <Link to="/recipes" className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-primary transition-colors">
+                    <UtensilsCrossed className="h-4 w-4" />
+                    Or start from a recipe
+                  </Link>
+                </div>
+              </>
+            )}
           </div>
         )}
 
@@ -290,19 +382,7 @@ export const Trolley = () => {
                     </div>
                   </div>
                   <div>
-                    {(() => {
-                      // Group items by department
-                      const grouped: Record<string, typeof selectedStore.items> = {};
-                      selectedStore.items.forEach((storeItem) => {
-                        const sourceItem = comparison.items.find(
-                          (i) => i.product_id === storeItem.source_product_id
-                        );
-                        const dept = sourceItem?.department || 'Other';
-                        if (!grouped[dept]) grouped[dept] = [];
-                        grouped[dept].push(storeItem);
-                      });
-
-                      return Object.entries(grouped).map(([dept, groupItems]) => (
+                    {groupedItems && Object.entries(groupedItems).map(([dept, groupItems]) => (
                         <div key={dept}>
                           <div className="px-3 py-1.5 bg-secondary/70 border-y">
                             <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
@@ -343,17 +423,19 @@ export const Trolley = () => {
                                       <div className="flex items-center gap-2 mt-0.5">
                                         <div className="flex items-center gap-1">
                                           <button
-                                            className="h-5 w-5 rounded flex items-center justify-center hover:bg-muted text-muted-foreground"
+                                            className="h-7 w-7 rounded flex items-center justify-center hover:bg-muted text-muted-foreground touch-manipulation"
                                             onClick={() => updateQuantity(storeItem.source_product_id, storeItem.quantity - 1)}
                                             disabled={storeItem.quantity <= 1}
+                                            aria-label={`Decrease quantity of ${storeItem.matched_product_name ?? storeItem.source_product_name}`}
                                           >
                                             <Minus className="h-3 w-3" />
                                           </button>
-                                          <span className="text-xs font-medium w-4 text-center">{storeItem.quantity}</span>
+                                          <span className="text-xs font-medium w-5 text-center" aria-label={`Quantity: ${storeItem.quantity}`}>{storeItem.quantity}</span>
                                           <button
-                                            className="h-5 w-5 rounded flex items-center justify-center hover:bg-muted text-muted-foreground"
+                                            className="h-7 w-7 rounded flex items-center justify-center hover:bg-muted text-muted-foreground touch-manipulation"
                                             onClick={() => updateQuantity(storeItem.source_product_id, storeItem.quantity + 1)}
                                             disabled={storeItem.quantity >= 99}
+                                            aria-label={`Increase quantity of ${storeItem.matched_product_name ?? storeItem.source_product_name}`}
                                           >
                                             <Plus className="h-3 w-3" />
                                           </button>
@@ -361,9 +443,16 @@ export const Trolley = () => {
                                         {!storeItem.available && (
                                           <span className="text-xs text-muted-foreground">— Unavailable</span>
                                         )}
+                                        {storeItem.is_member_only && storeItem.available && (
+                                          <Badge variant="secondary" className="text-[10px] px-1.5 py-0 gap-0.5">
+                                            <Award className="h-2.5 w-2.5" />
+                                            Member
+                                          </Badge>
+                                        )}
                                         <button
-                                          className="h-5 w-5 rounded flex items-center justify-center hover:bg-destructive/10 text-muted-foreground hover:text-destructive ml-1"
+                                          className="h-7 w-7 rounded flex items-center justify-center hover:bg-destructive/10 text-muted-foreground hover:text-destructive ml-1 touch-manipulation"
                                           onClick={() => removeItem(storeItem.source_product_id)}
+                                          aria-label={`Remove ${storeItem.matched_product_name ?? storeItem.source_product_name} from trolley`}
                                         >
                                           <Trash2 className="h-3 w-3" />
                                         </button>
@@ -462,16 +551,27 @@ export const Trolley = () => {
                             })}
                           </div>
                         </div>
-                      ));
-                    })()}
+                      ))}
                   </div>
-                  <div className="p-4 border-t bg-secondary/50 flex items-center justify-between">
-                    <span className="text-sm text-muted-foreground">
-                      {selectedStore.items_available}/{selectedStore.items_total} items available
-                    </span>
-                    <span className="text-lg font-bold text-primary">
-                      ${selectedStore.estimated_total.toFixed(2)}
-                    </span>
+                  <div className="p-4 border-t bg-secondary/50">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-muted-foreground">
+                        {selectedStore.items_available}/{selectedStore.items_total} items available
+                      </span>
+                      <span className="text-lg font-bold text-primary">
+                        ${selectedStore.estimated_total.toFixed(2)}
+                      </span>
+                    </div>
+                    {(() => {
+                      const memberCount = selectedStore.items.filter((i) => i.is_member_only && i.available).length;
+                      if (memberCount === 0) return null;
+                      return (
+                        <p className="text-xs text-amber-700 mt-1 flex items-center gap-1">
+                          <Award className="h-3 w-3" />
+                          {memberCount} member-only price{memberCount > 1 ? 's' : ''} included
+                        </p>
+                      );
+                    })()}
                   </div>
                 </Card>
               ) : (
@@ -483,6 +583,27 @@ export const Trolley = () => {
           </div>
         )}
       </div>
+
+      <PromptDialog
+        open={showSaveDialog}
+        onOpenChange={setShowSaveDialog}
+        title="Save Trolley"
+        description="Give your trolley a name so you can find it later."
+        defaultValue="My Trolley"
+        placeholder="Trolley name"
+        confirmLabel="Save"
+        onConfirm={handleSaveTrolley}
+      />
+
+      <ConfirmDialog
+        open={showClearDialog}
+        onOpenChange={setShowClearDialog}
+        title="Clear Trolley"
+        description={`Remove all ${itemCount} item${itemCount !== 1 ? 's' : ''} from your trolley? You can undo this for a few seconds.`}
+        confirmLabel="Clear All"
+        variant="destructive"
+        onConfirm={clearTrolley}
+      />
     </div>
   );
 };

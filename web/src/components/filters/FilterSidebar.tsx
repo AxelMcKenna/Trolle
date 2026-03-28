@@ -1,13 +1,11 @@
 import { useFilters } from '@/hooks/useFilters';
-import { SortDropdown } from './SortDropdown';
-import { CategoryFilter } from './CategoryFilter';
 import { ChainFilter } from './ChainFilter';
 import { PromoToggle } from './PromoToggle';
+import { MemberPriceToggle } from './MemberPriceToggle';
 import { PriceRangeFilter } from './PriceRangeFilter';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { X, Sparkles, ArrowUpDown, DollarSign, Store as StoreIcon, Grid3x3 } from 'lucide-react';
-import { SortOption } from '@/types';
+import { X, Sparkles, DollarSign, Store as StoreIcon } from 'lucide-react';
 
 interface FilterSidebarProps {
   isOpen: boolean;
@@ -16,6 +14,14 @@ interface FilterSidebarProps {
 
 export const FilterSidebar = ({ isOpen, onClose }: FilterSidebarProps) => {
   const { filters, updateFilters, clearFilters, activeFilterCount } = useFilters();
+
+  // Auto-close on mobile after filter change
+  const handleFilterChange = (updates: Parameters<typeof updateFilters>[0]) => {
+    updateFilters(updates);
+    if (window.innerWidth < 1024) {
+      setTimeout(onClose, 200);
+    }
+  };
 
   return (
     <>
@@ -72,35 +78,7 @@ export const FilterSidebar = ({ isOpen, onClose }: FilterSidebarProps) => {
 
           {/* Scrollable filters */}
           <div className="flex-1 overflow-y-auto px-6 py-4 space-y-8">
-            {/* Category */}
-            <div>
-              <div className="flex items-center gap-2 mb-4">
-                <Grid3x3 className="h-4 w-4 text-primary" />
-                <label className="text-sm font-semibold text-primary-gray">
-                  Category
-                </label>
-              </div>
-              <CategoryFilter
-                value={filters.category}
-                onChange={(category) => updateFilters({ category })}
-              />
-            </div>
-
-            {/* Sort */}
-            <div>
-              <div className="flex items-center gap-2 mb-4">
-                <ArrowUpDown className="h-4 w-4 text-primary" />
-                <label className="text-sm font-semibold text-primary-gray">
-                  Sort By
-                </label>
-              </div>
-              <SortDropdown
-                value={filters.sort || SortOption.CHEAPEST}
-                onChange={(sort) => updateFilters({ sort })}
-              />
-            </div>
-
-            {/* Promo Only */}
+            {/* Deals & Promos */}
             <div>
               <div className="flex items-center gap-2 mb-4">
                 <Sparkles className="h-4 w-4 text-primary" />
@@ -108,10 +86,16 @@ export const FilterSidebar = ({ isOpen, onClose }: FilterSidebarProps) => {
                   Deals & Promos
                 </label>
               </div>
-              <PromoToggle
-                checked={filters.promo_only || false}
-                onChange={(promo_only) => updateFilters({ promo_only })}
-              />
+              <div className="space-y-3">
+                <PromoToggle
+                  checked={filters.promo_only || false}
+                  onChange={(promo_only) => handleFilterChange({ promo_only })}
+                />
+                <MemberPriceToggle
+                  checked={filters.member_prices !== false}
+                  onChange={(checked) => handleFilterChange({ member_prices: checked ? undefined : false })}
+                />
+              </div>
             </div>
 
             {/* Price Range */}
@@ -125,7 +109,7 @@ export const FilterSidebar = ({ isOpen, onClose }: FilterSidebarProps) => {
               <PriceRangeFilter
                 min={filters.price_min}
                 max={filters.price_max}
-                onChange={(price_min, price_max) => updateFilters({ price_min, price_max })}
+                onChange={(price_min, price_max) => handleFilterChange({ price_min, price_max })}
               />
             </div>
 
@@ -139,7 +123,7 @@ export const FilterSidebar = ({ isOpen, onClose }: FilterSidebarProps) => {
               </div>
               <ChainFilter
                 selected={filters.chains || []}
-                onChange={(chains) => updateFilters({ chains })}
+                onChange={(chains) => handleFilterChange({ chains })}
               />
             </div>
           </div>

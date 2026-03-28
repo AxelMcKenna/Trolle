@@ -2,12 +2,45 @@ import { useSearchParams } from 'react-router-dom';
 import { useMemo, useCallback, useEffect, useRef } from 'react';
 import { ProductFilters, SortOption, ChainType } from '@/types';
 
+const FILTER_STORAGE_KEY = 'trolle.lastFilters';
+
 export const useFilters = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const latestSearchParamsRef = useRef(new URLSearchParams(searchParams));
+  const hydratedRef = useRef(false);
 
   useEffect(() => {
     latestSearchParamsRef.current = new URLSearchParams(searchParams);
+  }, [searchParams]);
+
+  // Hydrate from localStorage on first mount when URL has no filter params
+  useEffect(() => {
+    if (hydratedRef.current) return;
+    hydratedRef.current = true;
+
+    const hasUrlFilters = searchParams.toString().length > 0;
+    if (hasUrlFilters) return;
+
+    try {
+      const stored = localStorage.getItem(FILTER_STORAGE_KEY);
+      if (stored) {
+        const savedParams = new URLSearchParams(stored);
+        // Only restore non-page filter params
+        savedParams.delete('page');
+        if (savedParams.toString()) {
+          setSearchParams(savedParams);
+        }
+      }
+    } catch { /* ignore */ }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Persist filter params to localStorage on change (excluding page)
+  useEffect(() => {
+    const toSave = new URLSearchParams(searchParams);
+    toSave.delete('page');
+    if (toSave.toString()) {
+      localStorage.setItem(FILTER_STORAGE_KEY, toSave.toString());
+    }
   }, [searchParams]);
 
   const filters: ProductFilters = useMemo(() => {
@@ -16,6 +49,7 @@ export const useFilters = () => {
     const chainParam = searchParams.get('chain');
     const chains = chainParam ? (chainParam.split(',') as ChainType[]) : undefined;
     const promo_only = searchParams.get('promo_only') === 'true' ? true : undefined;
+    const member_prices = searchParams.get('member_prices') === 'false' ? false : undefined;
     const price_min = searchParams.get('price_min') ? parseFloat(searchParams.get('price_min')!) : undefined;
     const price_max = searchParams.get('price_max') ? parseFloat(searchParams.get('price_max')!) : undefined;
     const sortParam = searchParams.get('sort') as SortOption | null;
@@ -28,6 +62,7 @@ export const useFilters = () => {
       category,
       chains,
       promo_only,
+      member_prices,
       price_min,
       price_max,
       sort,
@@ -62,6 +97,12 @@ export const useFilters = () => {
         } else {
           newParams.delete('promo_only');
         }
+      } else if (key === 'member_prices') {
+        if (value === false) {
+          newParams.set('member_prices', 'false');
+        } else {
+          newParams.delete('member_prices');
+        }
       } else {
         newParams.set(key, String(value));
       }
@@ -93,6 +134,7 @@ export const useFilters = () => {
     if (filters.category) count++;
     if (filters.chains?.length) count += filters.chains.length;
     if (filters.promo_only) count++;
+    if (filters.member_prices === false) count++;
     if (filters.price_min || filters.price_max) count++;
     if (filters.sort && filters.sort !== SortOption.CHEAPEST) count++;
     return count;

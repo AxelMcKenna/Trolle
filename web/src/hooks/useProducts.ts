@@ -2,8 +2,7 @@ import { useState, useCallback, useEffect, useRef } from 'react';
 import axios from 'axios';
 import { Product, ProductListResponse, ProductFilters } from '@/types';
 import { buildProductQueryParams } from '@/lib/productParams';
-
-const API_BASE = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
+import { api } from '@/lib/api';
 
 export const useProducts = () => {
   const [products, setProducts] = useState<ProductListResponse | null>(null);
@@ -35,7 +34,7 @@ export const useProducts = () => {
         params.append("page", "1");
       }
 
-      const { data } = await axios.get<ProductListResponse>(`${API_BASE}/products`, {
+      const { data } = await api.get<ProductListResponse>(`/products`, {
         params,
         signal: controller.signal,
       });
