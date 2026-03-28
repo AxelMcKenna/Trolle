@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime, timezone
 from typing import Any
 from uuid import UUID
@@ -15,9 +16,17 @@ from app.services.matching import find_cross_chain_matches
 ALL_CHAINS = ["countdown", "new_world", "paknsave"]
 
 
-def _effective_price(price_nzd: float, promo_price_nzd: float | None, promo_ends_at: datetime | None) -> float:
-    """Return effective price, ignoring expired promos."""
+def _effective_price(
+    price_nzd: float,
+    promo_price_nzd: float | None,
+    promo_ends_at: datetime | None,
+    is_member_only: bool = False,
+    has_loyalty_card: bool = True,
+) -> float:
+    """Return effective price, ignoring expired promos and member-only promos without card."""
     if promo_price_nzd is not None:
+        if is_member_only and not has_loyalty_card:
+            return price_nzd
         if promo_ends_at is None or promo_ends_at > datetime.now(tz=timezone.utc):
             return promo_price_nzd
     return price_nzd
@@ -30,6 +39,7 @@ async def compare_trolley(
     lat: float,
     lon: float,
     radius_km: float,
+    loyalty_cards: dict[str, bool] | None = None,
 ) -> dict:
     """Compare trolley items across nearby stores.
 
@@ -82,7 +92,7 @@ async def compare_trolley(
     # all_matched_product_ids includes source + matched product IDs
     all_product_ids: set[UUID] = set(product_ids)
 
-    for pid, product in source_products.items():
+    async def _match_one(pid: UUID, product: Any) -> tuple[UUID, dict[str, list[dict]]]:
         target_chains = [c for c in ALL_CHAINS if c != product.chain]
         matches = await find_cross_chain_matches(
             session,
@@ -92,11 +102,21 @@ async def compare_trolley(
             product_brand=product.brand,
             product_size=product.size,
             product_department=product.department,
+            product_subcategory=product.subcategory,
+            source_embedding=getattr(product, "embedding", None),
             target_chains=target_chains,
             store_ids=store_ids,
+            product_volume_ml=getattr(product, "volume_ml", None),
+            product_weight_g=getattr(product, "weight_g", None),
+            product_pack_count=getattr(product, "pack_count", None),
         )
+        return pid, matches
+
+    match_results = await asyncio.gather(
+        *[_match_one(pid, product) for pid, product in source_products.items()]
+    )
+    for pid, matches in match_results:
         match_map[pid] = matches
-        # Add best match per chain to the set
         for chain, candidates in matches.items():
             if candidates:
                 all_product_ids.add(candidates[0]["product_id"])
@@ -172,7 +192,11 @@ async def compare_trolley(
 
             price = price_index.get((resolved_pid, store_id))
             if price:
-                eff_price = _effective_price(price.price_nzd, price.promo_price_nzd, price.promo_ends_at)
+                has_card = loyalty_cards.get(store.chain, True) if loyalty_cards else True
+                eff_price = _effective_price(
+                    price.price_nzd, price.promo_price_nzd, price.promo_ends_at,
+                    is_member_only=price.is_member_only, has_loyalty_card=has_card,
+                )
                 line_total = round(eff_price * qty, 2)
                 estimated_total += line_total
                 items_available += 1
@@ -185,6 +209,7 @@ async def compare_trolley(
                     "matched_product_name": resolved_name,
                     "price": eff_price,
                     "line_total": line_total,
+                    "is_member_only": price.is_member_only,
                 })
             else:
                 store_items.append({

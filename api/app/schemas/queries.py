@@ -23,6 +23,7 @@ class ProductQueryParams(BaseModel):
     price_min: Optional[float] = None
     price_max: Optional[float] = None
     promo_only: bool = False
+    member_prices: bool = True
     unique_products: bool = False
     sort: str = "total_price"
     page: int = 1
