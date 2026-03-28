@@ -24,7 +24,6 @@ from sqlalchemy import text
 
 from app.db.session import get_async_session
 from app.store_scrapers.base import StoreLocationScraper
-from app.store_scrapers.countdown import CountdownLocationScraper
 
 logging.basicConfig(
     level=logging.INFO,
@@ -32,12 +31,11 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-STORE_CHAINS: Dict[str, Type[StoreLocationScraper]] = {
-    "countdown": CountdownLocationScraper,
-}
+STORE_CHAINS: Dict[str, Type[StoreLocationScraper]] = {}
 
-# Foodstuffs chains use static JSON store lists (no scraper needed)
+# All chains use static JSON store lists
 _JSON_STORE_CHAINS: Dict[str, str] = {
+    "countdown": "countdown_stores.json",
     "paknsave": "paknsave_stores.json",
     "new_world": "newworld_stores.json",
 }
