@@ -88,6 +88,7 @@ class Product(Base):
     pack_count: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     normalized_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     normalized_brand: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
+    barcode: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
 
     prices: Mapped[list["Price"]] = relationship(back_populates="product")
 
@@ -100,6 +101,7 @@ class Product(Base):
         Index("ix_product_weight_g", "weight_g"),
         Index("ix_product_dept_volume", "department", "volume_ml"),
         Index("ix_product_dept_weight", "department", "weight_g"),
+        Index("ix_product_barcode", "barcode"),
     )
 
 

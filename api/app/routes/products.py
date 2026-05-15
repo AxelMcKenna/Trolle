@@ -255,6 +255,33 @@ async def product_price_history(
         return PriceHistoryResponse.parse_obj(payload)
 
 
+@router.get("/barcode/{barcode}")
+async def barcode_lookup(
+    barcode: str,
+    lat: Optional[float] = Query(None),
+    lon: Optional[float] = Query(None),
+    radius_km: Optional[float] = Query(None, ge=1, le=10),
+) -> dict:
+    """Look up a product by barcode (EAN/UPC/GTIN). Returns the product with prices at nearby stores."""
+    async with get_async_session() as session:
+        query = select(Product).where(Product.barcode == barcode)
+        result = await session.execute(query)
+        product = result.scalar_one_or_none()
+
+        if not product:
+            raise HTTPException(status_code=404, detail="No product found for this barcode")
+
+        # Fetch full product detail with prices
+        detail = await fetch_product_detail(
+            session,
+            product.id,
+            lat=lat,
+            lon=lon,
+            radius_km=radius_km or 5.0,
+        )
+        return json.loads(detail.json())
+
+
 @router.get("/{product_id}", response_model=ProductDetailSchema)
 async def product_detail(
     product_id: UUID,

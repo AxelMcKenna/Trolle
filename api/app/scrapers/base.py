@@ -179,6 +179,7 @@ class Scraper(abc.ABC):
         pack_count: Optional[int] = None,
         normalized_name: Optional[str] = None,
         normalized_brand: Optional[str] = None,
+        barcode: Optional[str] = None,
         **kwargs  # Allow additional fields
     ) -> dict:
         """
@@ -227,6 +228,7 @@ class Scraper(abc.ABC):
             "pack_count": pack_count,
             "normalized_name": normalized_name,
             "normalized_brand": normalized_brand,
+            "barcode": barcode,
             "price_nzd": price_nzd,
             "promo_price_nzd": promo_price_nzd,
             "promo_text": promo_text[:255] if promo_text else None,
@@ -274,6 +276,7 @@ class Scraper(abc.ABC):
                 "pack_count": product_data.get("pack_count"),
                 "normalized_name": product_data.get("normalized_name"),
                 "normalized_brand": product_data.get("normalized_brand"),
+                "barcode": product_data.get("barcode"),
             })
             embedding_texts.append(embed_product_text(
                 department=product_data.get("department"),
@@ -309,6 +312,7 @@ class Scraper(abc.ABC):
                     "pack_count": stmt.excluded.pack_count,
                     "normalized_name": stmt.excluded.normalized_name,
                     "normalized_brand": stmt.excluded.normalized_brand,
+                    "barcode": stmt.excluded.barcode,
                     "updated_at": now,
             }
             if embeddings:

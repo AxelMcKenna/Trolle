@@ -264,6 +264,14 @@ class CountdownAPIScraper(Scraper):
             unit_price = avg_qty_price
             unit_measure = avg_qty_units or None
 
+        # Barcode (EAN/GTIN) — Woolworths API may include this
+        barcode = (
+            product_data.get("barcode")
+            or product_data.get("ean")
+            or product_data.get("gtin")
+            or None
+        )
+
         return self.build_product_dict(
             source_id=sku,
             name=full_name,
@@ -286,6 +294,7 @@ class CountdownAPIScraper(Scraper):
             pack_count=structured.pack_count,
             normalized_name=clean_product_name(full_name, brand),
             normalized_brand=normalize_brand(brand) if brand else None,
+            barcode=barcode,
         )
 
     async def fetch_catalog_pages(self) -> List[str]:

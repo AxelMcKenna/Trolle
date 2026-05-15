@@ -357,7 +357,10 @@ class FoodstuffsAPIScraper(Scraper):
                     "sponsored",
                     "category0NI",
                     "category1NI",
-                    "category2NI"
+                    "category2NI",
+                    "ean",
+                    "barcode",
+                    "gtin"
                 ],
                 "facets": [
                     "brand",
@@ -488,6 +491,14 @@ class FoodstuffsAPIScraper(Scraper):
                 pass
             unit_measure = cup_measure or None
 
+        # Barcode (EAN/GTIN) — Foodstuffs Algolia index may include this
+        barcode = (
+            product_data.get("ean")
+            or product_data.get("barcode")
+            or product_data.get("gtin")
+            or None
+        )
+
         return self.build_product_dict(
             source_id=product_id,
             name=full_name,
@@ -510,6 +521,7 @@ class FoodstuffsAPIScraper(Scraper):
             pack_count=structured.pack_count,
             normalized_name=clean_product_name(full_name, brand),
             normalized_brand=normalize_brand(brand) if brand else None,
+            barcode=barcode,
         )
 
     async def fetch_catalog_pages(self) -> List[str]:

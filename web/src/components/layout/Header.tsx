@@ -1,6 +1,8 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { Search, MapPin, ShoppingCart, UtensilsCrossed, User, LogOut, Clock, X, Bell } from "lucide-react";
+import { BarcodeScanButton } from "@/components/scanner/BarcodeScanButton";
 import { Link, useNavigate } from "react-router-dom";
+import { api } from "@/lib/api";
 import { useLocationContext } from "@/contexts/LocationContext";
 import { useTrolleyContext } from "@/contexts/TrolleyContext";
 import { useAuth } from "@/contexts/AuthContext";
@@ -57,6 +59,27 @@ export const Header = ({
     return () => document.removeEventListener('mousedown', handler);
   }, []);
 
+  const handleBarcodeScan = useCallback(async (barcode: string) => {
+    // Try barcode lookup endpoint first
+    try {
+      const { data } = await api.get(`/products/barcode/${encodeURIComponent(barcode)}`);
+      if (data?.id) {
+        navigate(`/products/${data.id}`);
+        return;
+      }
+    } catch {
+      // No barcode match — fall back to text search
+    }
+
+    // Fallback: use barcode as search query
+    setQuery(barcode);
+    if (externalOnSearch) {
+      setTimeout(() => externalOnSearch(), 0);
+    } else {
+      navigate(`/explore?q=${encodeURIComponent(barcode)}`);
+    }
+  }, [setQuery, externalOnSearch, navigate]);
+
   const handleSearchSubmit = () => {
     if (query.trim()) addSearch(query.trim());
     if (externalOnSearch) {
@@ -96,8 +119,11 @@ export const Header = ({
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && handleSearchSubmit()}
-                className="pl-12 h-12 bg-white text-base"
+                className="pl-12 pr-11 h-12 bg-white text-base"
               />
+              <div className="absolute right-2 top-1/2 -translate-y-1/2">
+                <BarcodeScanButton onScan={handleBarcodeScan} />
+              </div>
             </div>
           </div>
         </div>
@@ -125,8 +151,11 @@ export const Header = ({
                 onChange={(e) => setQuery(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && handleSearchSubmit()}
                 onFocus={() => setSearchFocused(true)}
-                className="pl-10 h-10 bg-white text-sm"
+                className="pl-10 pr-10 h-10 bg-white text-sm"
               />
+              <div className="absolute right-1.5 top-1/2 -translate-y-1/2">
+                <BarcodeScanButton onScan={handleBarcodeScan} />
+              </div>
               {/* Recent searches dropdown — shows all when empty, filtered while typing */}
               {searchFocused && recentSearches.length > 0 && (() => {
                 const filtered = query
